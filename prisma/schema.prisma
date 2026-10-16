@@ -1,0 +1,168 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  CUSTOMER
+  BARTENDER
+  CLUB_ADMIN
+  SUPER_ADMIN
+}
+
+enum OrderStatus {
+  PENDING
+  ACTIVE
+  DEPLETED
+  EXPIRED
+  CANCELLED
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+}
+
+model Tenant {
+  id                        String              @id @default(uuid())
+  slug                      String              @unique
+  name                      String
+  domain                    String?             @unique
+  themeConfig               Json                @default("{}") // Colores, logo, tipografías y estética white-label
+  
+  // Credenciales Mercado Pago
+  mpSellerId                String?
+  mpAccessTokenEnc          String?
+  mpPublicKey               String?
+  mpWebhookSecret           String?
+  
+  // Reglas de negocio y monetización
+  feePercentage             Decimal             @default(0.0) @db.Decimal(5, 2) // % comisión opcional sobre ventas
+  subscriptionStatus        SubscriptionStatus  @default(TRIAL)
+  trialEndsAt               DateTime?
+  subscriptionPriceMonthly  Decimal             @default(0.0) @db.Decimal(10, 2)
+  defaultExpirationHour     String              @default("07:00") // Hora de cierre nocturno
+  isActive                  Boolean             @default(true)
+  createdAt                 DateTime            @default(now())
+  updatedAt                 DateTime            @updatedAt
+
+  users                     User[]
+  products                  Product[]
+  orders                    Order[]
+
+  @@index([slug])
+}
+
+model User {
+  id              String           @id @default(uuid())
+  tenantId        String?
+  authProviderId  String?          @unique
+  email           String?
+  phone           String?
+  dni             String?
+  fullName        String?
+  role            Role             @default(CUSTOMER)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  tenant          Tenant?          @relation(fields: [tenantId], references: [id])
+  orders          Order[]
+  redemptions     RedemptionLog[]
+
+  @@index([dni])
+  @@index([phone])
+  @@index([tenantId, role])
+}
+
+model Product {
+  id                  String           @id @default(uuid())
+  tenantId            String
+  category            String           // "Tragos", "Cervezas", "Combos", "Sin Alcohol"
+  name                String
+  description         String?
+  price               Decimal          @db.Decimal(10, 2)
+  imageUrl            String?
+  stockAvailable      Int              @default(9999)
+  redeemDeadlineTime  String?          // Ej: "02:30" (horario límite si es trago promo)
+  isActive            Boolean          @default(true)
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  tenant              Tenant           @relation(fields: [tenantId], references: [id])
+  orderItems          OrderItem[]
+  substitutions       RedemptionLog[]  @relation("SubstitutedProduct")
+
+  @@index([tenantId, isActive])
+  @@index([tenantId, category])
+}
+
+model Order {
+  id              String           @id @default(uuid())
+  tenantId        String
+  userId          String
+  mpPreferenceId  String?
+  mpPaymentId     String?          @unique
+  status          OrderStatus      @default(PENDING)
+  qrTokenHash     String?          @unique
+  totalAmount     Decimal          @db.Decimal(10, 2)
+  feeAmount       Decimal          @default(0.0) @db.Decimal(10, 2)
+  expiresAt       DateTime
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  tenant          Tenant           @relation(fields: [tenantId], references: [id])
+  user            User             @relation(fields: [userId], references: [id])
+  items           OrderItem[]
+  redemptions     RedemptionLog[]
+
+  @@index([tenantId, status])
+  @@index([userId])
+  @@index([qrTokenHash])
+}
+
+model OrderItem {
+  id                  String           @id @default(uuid())
+  orderId             String
+  productId           String
+  productNameSnapshot String
+  unitPrice           Decimal          @db.Decimal(10, 2)
+  quantityPurchased   Int
+  quantityRedeemed    Int              @default(0)
+  redeemDeadlineAt    DateTime?        // Fecha y hora exacta límite si era promo
+  createdAt           DateTime         @default(now())
+
+  order               Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product             Product          @relation(fields: [productId], references: [id])
+  redemptions         RedemptionLog[]
+
+  @@index([orderId])
+}
+
+model RedemptionLog {
+  id                    String      @id @default(uuid())
+  orderId               String
+  orderItemId           String
+  bartenderUserId       String
+  quantityDelivered     Int
+  substitutedProductId  String?
+  isReverted            Boolean     @default(false)
+  revertedAt            DateTime?
+  revertedByUserId      String?
+  redeemedAt            DateTime    @default(now())
+
+  order                 Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderItem             OrderItem   @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  bartender             User        @relation(fields: [bartenderUserId], references: [id])
+  substitutedProduct    Product?    @relation("SubstitutedProduct", fields: [substitutedProductId], references: [id])
+
+  @@index([orderId])
+  @@index([orderItemId])
+  @@index([bartenderUserId])
+}

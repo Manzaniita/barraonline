@@ -304,7 +304,16 @@ Vamos a desarrollar la plataforma SaaS White-Label de venta y canje parcial de b
 
 ---
 
-## 6. Plan de Implementación por Fases
+## 6. Control de Versiones y Despliegue Continuo (CI/CD en Vercel)
+
+* **Repositorio Oficial:** [https://github.com/Manzaniita/barraonline](https://github.com/Manzaniita/barraonline) (rama principal `main`).
+* **Hosting del Frontend & BFF:** Vercel conectado directamente al repositorio de GitHub.
+* **Base de Datos de Producción:** PostgreSQL administrado (Supabase o Neon) con connection pooler PgBouncer habilitado.
+* **Regla de Flujo Operativo:** Al completar y verificar cada fase de desarrollo, se realiza un `commit` y `git push origin main` para disparar el despliegue automático e instantáneo en Vercel.
+
+---
+
+## 7. Plan de Implementación por Fases
 
 Avanzaremos paso a paso, validando cada fase antes de pasar a la siguiente:
 

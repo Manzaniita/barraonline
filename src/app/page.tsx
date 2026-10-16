@@ -1,69 +1,105 @@
-import Image from "next/image";
+import Link from 'next/link'
+import { QrCode, Sparkles, ShieldCheck, Zap, ArrowRight, GlassWater } from 'lucide-react'
 
-export default function Home() {
+export default function HomePage() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="min-h-screen bg-[#0a0a0e] text-white flex flex-col justify-between selection:bg-purple-500 selection:text-white">
+      {/* Navbar Superior */}
+      <nav className="border-b border-white/10 px-6 py-4 bg-black/40 backdrop-blur-md sticky top-0 z-30">
+        <div className="max-w-5xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-purple-600 to-pink-600 flex items-center justify-center text-white shadow-lg shadow-purple-600/30">
+              <GlassWater className="w-5 h-5" />
+            </div>
+            <span className="font-extrabold text-lg tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-purple-200 via-white to-pink-200">
+              BarraOnline
+            </span>
+          </div>
+
+          <Link
+            href="/demo-club"
+            className="flex items-center gap-1.5 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-semibold text-xs px-4 py-2 rounded-xl shadow-md shadow-purple-600/20 active:scale-95 transition-all"
+          >
+            <span>Ver Demo</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+      </nav>
+
+      {/* Hero Principal */}
+      <main className="flex-1 flex flex-col items-center justify-center px-4 py-16 text-center max-w-3xl mx-auto">
+        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-300 text-xs font-semibold mb-6">
+          <Sparkles className="w-3.5 h-3.5" />
+          <span>Plataforma SaaS White-Label para Boliches</span>
+        </div>
+
+        <h1 className="text-4xl sm:text-6xl font-black tracking-tight leading-[1.1] mb-6">
+          Venta de Bebidas y{' '}
+          <span className="bg-clip-text text-transparent bg-gradient-to-r from-purple-400 via-fuchsia-400 to-pink-400">
+            Canje Rápido por QR
+          </span>
+        </h1>
+
+        <p className="text-base sm:text-lg text-white/70 max-w-xl mb-10 leading-relaxed">
+          Eliminá las colas en la barra. Tus clientes compran desde su celular con Mercado Pago, descargan su ticket QR en fotos y retiran sus tragos al instante sin depender de la señal celular.
+        </p>
+
+        {/* Botón Principal a Demo */}
+        <div className="flex flex-col sm:flex-row items-center gap-4 w-full max-w-md justify-center">
+          <Link
+            href="/demo-club"
+            className="w-full sm:w-auto flex-1 bg-gradient-to-r from-purple-600 via-fuchsia-600 to-pink-600 hover:opacity-95 text-white font-bold py-3.5 px-6 rounded-2xl shadow-xl shadow-purple-900/40 flex items-center justify-center gap-2 text-sm active:scale-[0.98] transition-all"
           >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            <QrCode className="w-4 h-4" />
+            <span>Probar Tienda Móvil Demo</span>
+          </Link>
+        </div>
+
+        {/* Tarjetas de Beneficios Clave */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-16 text-left w-full">
+          <div className="bg-[#12121a] border border-white/10 rounded-2xl p-5">
+            <div className="w-9 h-9 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center mb-3">
+              <Zap className="w-5 h-5" />
+            </div>
+            <h3 className="font-bold text-sm text-white mb-1">QR Dinámico Reutilizable</h3>
+            <p className="text-xs text-white/60 leading-relaxed">
+              Mismo código QR con saldo parcial: el cliente puede comprar 4 tragos y retirar de a 1 durante toda la noche.
+            </p>
+          </div>
+
+          <div className="bg-[#12121a] border border-white/10 rounded-2xl p-5">
+            <div className="w-9 h-9 rounded-xl bg-pink-500/20 text-pink-400 flex items-center justify-center mb-3">
+              <QrCode className="w-5 h-5" />
+            </div>
+            <h3 className="font-bold text-sm text-white mb-1">Ticket Offline en Fotos</h3>
+            <p className="text-xs text-white/60 leading-relaxed">
+              Descarga automática a la galería del teléfono para presentar en la barra sin importar si se corta el 4G.
+            </p>
+          </div>
+
+          <div className="bg-[#12121a] border border-white/10 rounded-2xl p-5">
+            <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center mb-3">
+              <ShieldCheck className="w-5 h-5" />
+            </div>
+            <h3 className="font-bold text-sm text-white mb-1">Seguridad Criptográfica</h3>
+            <p className="text-xs text-white/60 leading-relaxed">
+              Firmado digital HMAC-SHA256 inmune a capturas falsas y consulta de DNI estrictamente en modo solo lectura.
+            </p>
+          </div>
         </div>
       </main>
+
+      {/* Footer */}
+      <footer className="border-t border-white/10 py-6 px-4 text-center text-xs text-white/40">
+        <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
+          <span>BarraOnline SaaS • Plataforma Nocturna de Alta Disponibilidad</span>
+          <div className="flex items-center gap-4">
+            <Link href="/demo-club" className="hover:text-white transition-colors">
+              Demo Boliche
+            </Link>
+          </div>
+        </div>
+      </footer>
     </div>
-  );
+  )
 }

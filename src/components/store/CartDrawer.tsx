@@ -52,7 +52,7 @@ export function CartDrawer({ tenantSlug, nightclubName }: CartDrawerProps) {
     maximumFractionDigits: 0,
   }).format(totalAmount)
 
-  const handleCheckoutClick = () => {
+  const handleCheckoutClick = async () => {
     // Si el usuario no completó DNI, abrir modal obligatorio de 5 segundos
     if (!customer || !customer.dni) {
       setIsAuthModalOpen(true)
@@ -60,13 +60,40 @@ export function CartDrawer({ tenantSlug, nightclubName }: CartDrawerProps) {
     }
 
     setIsProcessing(true)
-    // En la Fase 2 mostramos la confirmación del flujo de datos preparado para Fase 3
-    setTimeout(() => {
-      setIsProcessing(false)
+    setCheckoutNotice(null)
+
+    try {
+      const response = await fetch('/api/checkout/preference', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenantSlug,
+          items: items.map((i) => ({ productId: i.product.id, quantity: i.quantity })),
+          customer,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'No se pudo generar la preferencia de pago.')
+      }
+
+      // Vaciar carrito al iniciar el pago y redirigir
+      clearCart()
+      setIsCartOpen(false)
+
+      if (data.initPoint) {
+        window.location.href = data.initPoint
+      }
+    } catch (err) {
+      console.error('Error al iniciar checkout:', err)
       setCheckoutNotice(
-        `✅ Datos validados: DNI ${customer.dni} (${customer.fullName}). Carrito con ${totalCount} bebidas listo. En la Fase 3 se conectará con la pasarela oficial de Mercado Pago.`
+        err instanceof Error ? err.message : 'Error al conectar con la pasarela de pago.'
       )
-    }, 600)
+    } finally {
+      setIsProcessing(false)
+    }
   }
 
   return (

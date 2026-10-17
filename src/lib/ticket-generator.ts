@@ -27,13 +27,14 @@ export interface SavedTicket extends TicketData {
 
 /**
  * Genera el código QR de alto contraste en formato DataURL.
- * Usa nivel 'M' (15% corrección) que agranda los módulos negros/blancos para lectura ultra-rápida.
+ * Usa nivel 'L' (7% corrección para pantallas digitales) que genera los bloques más grandes posibles
+ * para permitir detección instantánea desde 1 a 2 metros de distancia estilo Mercado Pago.
  */
 export async function generateQrDataUrl(qrToken: string): Promise<string> {
   return QRCode.toDataURL(qrToken, {
-    errorCorrectionLevel: 'M',
+    errorCorrectionLevel: 'L',
     margin: 2,
-    width: 600,
+    width: 640,
     color: {
       dark: '#000000',
       light: '#ffffff',

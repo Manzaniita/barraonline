@@ -51,7 +51,8 @@ export function generateOrderQrToken(payload: QrTokenPayload): {
   }
 
   const payloadEncoded = Buffer.from(JSON.stringify(compactPayload)).toString('base64url')
-  const signature = signData(payloadEncoded)
+  // Firma criptográfica HMAC de 128 bits (32 caracteres hex): colisiones imposibles (1 en 3.4 x 10^38)
+  const signature = signData(payloadEncoded).slice(0, 32)
   const token = `${payloadEncoded}.${signature}`
 
   // Generamos un hash SHA-256 del token para guardar en la BD sin exponer la firma cruda
@@ -79,7 +80,11 @@ export function verifyOrderQrToken(token: string): VerificationResult {
   const [payloadEncoded, providedSignature] = parts
 
   try {
-    const expectedSignature = signData(payloadEncoded)
+    const fullExpectedSignature = signData(payloadEncoded)
+    const expectedSignature =
+      providedSignature.length === 32
+        ? fullExpectedSignature.slice(0, 32)
+        : fullExpectedSignature
 
     const expectedBuffer = Buffer.from(expectedSignature, 'hex')
     const providedBuffer = Buffer.from(providedSignature, 'hex')

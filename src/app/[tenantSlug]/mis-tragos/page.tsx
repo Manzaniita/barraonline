@@ -127,6 +127,7 @@ export default function MisTragosPage() {
                       <img
                         src={qrUrl}
                         alt="Código QR de Canje"
+                        style={{ imageRendering: 'pixelated' }}
                         className="w-60 h-60 mx-auto object-contain"
                       />
                     ) : (
@@ -210,8 +211,13 @@ export default function MisTragosPage() {
             Presentar en Barra con Brillo al Máximo
           </p>
 
-          <div className="bg-white p-6 rounded-3xl shadow-2xl max-w-xs w-full aspect-square flex items-center justify-center">
-            <img src={fullscreenQr.url} alt="QR Gigante" className="w-full h-full object-contain" />
+          <div className="bg-white p-5 rounded-3xl shadow-2xl max-w-xs w-full aspect-square flex items-center justify-center">
+            <img
+              src={fullscreenQr.url}
+              alt="QR Gigante"
+              style={{ imageRendering: 'pixelated' }}
+              className="w-full h-full object-contain"
+            />
           </div>
 
           <div className="mt-6 text-center text-white">

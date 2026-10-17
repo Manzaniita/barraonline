@@ -117,7 +117,11 @@ export default function BarraPage() {
       {/* Contenido Principal */}
       <main className="flex-1 max-w-md mx-auto w-full p-4 pb-20">
         {activeTab === 'scanner' ? (
-          <QrScannerView tenantSlug={tenantSlug} onOrderDetected={handleOrderDetected} />
+          <QrScannerView
+            tenantSlug={tenantSlug}
+            onOrderDetected={handleOrderDetected}
+            paused={Boolean(activeOrder)}
+          />
         ) : (
           <DniLookupView tenantSlug={tenantSlug} />
         )}

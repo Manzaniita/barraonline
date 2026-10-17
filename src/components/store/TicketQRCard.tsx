@@ -181,19 +181,20 @@ export function TicketQRCard({
         </div>
 
         {/* Contenedor QR de Alto Contraste */}
-        <div className="bg-white p-4 rounded-2xl inline-block shadow-xl my-2 relative group cursor-pointer" onClick={() => setIsFullScreen(true)}>
+        <div className="bg-white p-3.5 rounded-2xl inline-block shadow-xl my-2 relative group cursor-pointer" onClick={() => setIsFullScreen(true)}>
           {qrOnlyUrl ? (
             <img
               src={qrOnlyUrl}
               alt="Código QR de Canje"
-              className="w-56 h-56 mx-auto object-contain"
+              style={{ imageRendering: 'pixelated' }}
+              className="w-60 h-60 mx-auto object-contain"
             />
           ) : (
-            <div className="w-56 h-56 flex items-center justify-center text-black">
+            <div className="w-60 h-60 flex items-center justify-center text-black">
               <QrCode className="w-16 h-16 animate-spin" />
             </div>
           )}
-          <div className="text-[10px] text-black/60 font-mono font-semibold pt-1">
+          <div className="text-[10px] text-black/70 font-mono font-extrabold pt-1">
             TOCÁ PARA PANTALLA COMPLETA
           </div>
         </div>
@@ -221,7 +222,7 @@ export function TicketQRCard({
 
         <div className="mt-4 pt-3 border-t border-white/5 flex items-center justify-center gap-1.5 text-[11px] text-emerald-400 font-medium">
           <CheckCircle2 className="w-3.5 h-3.5" />
-          <span>Firma digital HMAC-SHA256 • Canje parcial habilitado</span>
+          <span>QR Ultrarrápido V2 • Firma HMAC-SHA256 • Canje parcial</span>
         </div>
       </div>
 
@@ -258,8 +259,13 @@ export function TicketQRCard({
             Presentar en Barra con Brillo Máximo
           </p>
 
-          <div className="bg-white p-6 rounded-3xl shadow-2xl max-w-xs w-full aspect-square flex items-center justify-center">
-            <img src={qrOnlyUrl} alt="QR Gigante" className="w-full h-full object-contain" />
+          <div className="bg-white p-5 rounded-3xl shadow-2xl max-w-xs w-full aspect-square flex items-center justify-center">
+            <img
+              src={qrOnlyUrl}
+              alt="QR Gigante"
+              style={{ imageRendering: 'pixelated' }}
+              className="w-full h-full object-contain"
+            />
           </div>
 
           <div className="mt-6 text-center text-white">

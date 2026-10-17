@@ -25,16 +25,28 @@ export interface SavedTicket extends TicketData {
   ticketDataUrl?: string
 }
 
+const ALPHANUMERIC_QR_REGEX = /^[0-9A-Z $%*+\-./:]+$/
+
 /**
- * Genera el código QR de alto contraste en formato DataURL.
- * Usa nivel 'L' (7% corrección para pantallas digitales) que genera los bloques más grandes posibles
- * para permitir detección instantánea desde 1 a 2 metros de distancia estilo Mercado Pago.
+ * Genera el código QR de alto contraste en formato DataURL optimizado estilo Mercado Pago Posnet.
+ * - Si el token es compatible con Alphanumeric Mode (ej. BO1/...), fuerza modo 'alphanumeric'
+ *   para empaquetar a 5.5 bits/carácter (Versión 3: 29x29 módulos gigantes).
+ * - Nivel 'M' (15% recuperación ante reflejos/dedos en pantalla) + Quiet Zone de 3 módulos.
  */
 export async function generateQrDataUrl(qrToken: string): Promise<string> {
-  return QRCode.toDataURL(qrToken, {
-    errorCorrectionLevel: 'L',
-    margin: 2,
-    width: 640,
+  const clean = qrToken.trim()
+  const upper = clean.toUpperCase()
+  const isAlphanumericCompatible =
+    upper.startsWith('BO1/') || ALPHANUMERIC_QR_REGEX.test(clean)
+
+  const segments = isAlphanumericCompatible
+    ? [{ data: isAlphanumericCompatible && upper.startsWith('BO1/') ? upper : clean, mode: 'alphanumeric' as const }]
+    : clean
+
+  return QRCode.toDataURL(segments, {
+    errorCorrectionLevel: 'M',
+    margin: 3,
+    width: 700,
     color: {
       dark: '#000000',
       light: '#ffffff',
@@ -43,7 +55,7 @@ export async function generateQrDataUrl(qrToken: string): Promise<string> {
 }
 
 /**
- * Renderiza el ticket completo de consumo en un HTML5 Canvas de alta resolución (750x1250)
+ * Renderiza el ticket completo de consumo en un HTML5 Canvas de alta resolución (750x1260)
  * y retorna la imagen en base64 PNG lista para descargar a la galería de fotos.
  */
 export async function renderTicketToCanvas(ticket: TicketData): Promise<string> {
@@ -147,7 +159,7 @@ export async function renderTicketToCanvas(ticket: TicketData): Promise<string> 
   ctx.fillText(`$${ticket.totalAmount.toLocaleString('es-AR')}`, width - 50, yPos)
   ctx.textAlign = 'center'
 
-  // 5. Contenedor del Código QR (Blanco de Alto Contraste)
+  // 5. Contenedor del Código QR (Blanco Puro de Alto Contraste con Quiet Zone amplia)
   const qrBoxY = yPos + 35
   const qrBoxSize = 460
   const qrBoxX = (width - qrBoxSize) / 2
@@ -158,14 +170,16 @@ export async function renderTicketToCanvas(ticket: TicketData): Promise<string> 
   ctx.lineWidth = 4
   ctx.strokeRect(qrBoxX, qrBoxY, qrBoxSize, qrBoxSize)
 
-  // Cargar imagen QR sobre el canvas
+  // Cargar imagen QR sobre el canvas con bordes 100% nítidos (sin interpolación borrosa)
   const qrImg = new Image()
   qrImg.src = qrDataUrl
   await new Promise((resolve) => {
     qrImg.onload = resolve
   })
 
-  const qrMargin = 20
+  const qrMargin = 16
+  const prevSmoothing = ctx.imageSmoothingEnabled
+  ctx.imageSmoothingEnabled = false
   ctx.drawImage(
     qrImg,
     qrBoxX + qrMargin,
@@ -173,6 +187,7 @@ export async function renderTicketToCanvas(ticket: TicketData): Promise<string> 
     qrBoxSize - qrMargin * 2,
     qrBoxSize - qrMargin * 2
   )
+  ctx.imageSmoothingEnabled = prevSmoothing
 
   // 6. Pie de Seguridad y Validez
   const footerY = qrBoxY + qrBoxSize + 40

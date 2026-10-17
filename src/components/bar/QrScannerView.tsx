@@ -8,12 +8,10 @@ import {
   Camera,
   RefreshCw,
   AlertCircle,
-  CheckCircle,
   Terminal,
   UploadCloud,
   SwitchCamera,
-  ZoomIn,
-  Sparkles,
+  RotateCcw,
 } from 'lucide-react'
 
 interface QrScannerViewProps {
@@ -149,133 +147,126 @@ export function QrScannerView({ tenantSlug, onOrderDetected }: QrScannerViewProp
     }
   }, [])
 
-  useEffect(() => {
-    let html5QrCode: Html5Qrcode | null = null
-    let isMounted = true
-
-    async function initScanner() {
-      try {
-        html5QrCode = new Html5Qrcode(readerId, {
-          formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
-          verbose: false,
-          experimentalFeatures: {
-            useBarCodeDetectorIfSupported: true,
-          },
-        })
-        scannerRef.current = html5QrCode
-
-        // CONFIGURACIÓN ESTILO MERCADO PAGO:
-        // 1. Alta tasa de cuadros por segundo (30 FPS)
-        // 2. SIN qrbox recortado (evalúa el 100% del frame completo de la cámara)
-        const scanConfig = {
-          fps: 30,
-          aspectRatio: 1.0,
-          disableFlip: true,
-        }
-
-        // Constraints de Alta Definición (1080p con autofoco continuo)
-        const hdConstraints: MediaTrackConstraints = {
-          facingMode: 'environment',
-          width: { min: 1280, ideal: 1920 },
-          height: { min: 720, ideal: 1080 },
-          advanced: [
-            { focusMode: 'continuous' } as any,
-            { exposureMode: 'continuous' } as any,
-          ],
-        }
-
-        // Detectar cámaras físicas
-        let availableCameras: CameraDevice[] = []
-        try {
-          availableCameras = await Html5Qrcode.getCameras()
-          if (isMounted) setCameras(availableCameras)
-        } catch (camErr) {
-          console.warn('No se pudieron listar cámaras:', camErr)
-        }
-
-        if (availableCameras.length > 0) {
-          // Priorizar cámara trasera principal (evita teleobjetivos o ultra-wide fijos)
-          const backCamIndex = availableCameras.findIndex((c) =>
-            /back|rear|environment|trasera|0/i.test(c.label)
-          )
-          const targetIndex = backCamIndex !== -1 ? backCamIndex : availableCameras.length - 1
-          if (isMounted) setCurrentCameraIndex(targetIndex)
-
-          const targetCam = availableCameras[targetIndex]
-          await html5QrCode.start(
-            {
-              deviceId: { exact: targetCam.id },
-              ...hdConstraints,
-            },
-            scanConfig,
-            (decodedText) => handleTokenScanned(decodedText),
-            () => {}
-          )
-        } else {
-          await html5QrCode.start(
-            hdConstraints,
-            scanConfig,
-            (decodedText) => handleTokenScanned(decodedText),
-            () => {}
-          )
-        }
-
-        if (isMounted) {
-          setIsScanning(true)
-          setCameraError(null)
-
-          // Extraer capacidades del track de video (Zoom y Autofoco)
-          setTimeout(() => {
-            const videoEl = document.querySelector(`#${readerId} video`) as HTMLVideoElement | null
-            if (videoEl && videoEl.srcObject) {
-              const stream = videoEl.srcObject as MediaStream
-              const track = stream.getVideoTracks()[0]
-              if (track) {
-                activeVideoTrackRef.current = track
-                const caps = track.getCapabilities ? (track.getCapabilities() as any) : null
-                if (caps && caps.zoom) {
-                  setSupportsZoom(true)
-                  const maxZ = Math.min(caps.zoom.max || 3, 3)
-                  setMaxZoom(maxZ)
-                  // Aplicar zoom ligero (1.2x) por defecto para emular el encuadre natural de Mercado Pago
-                  if (caps.zoom.min <= 1.2 && caps.zoom.max >= 1.2) {
-                    applyZoom(1.2)
-                  }
-                }
-              }
-
-              // Iniciar detector nativo por hardware a 60fps sobre el video
-              startHardwareDetector(videoEl)
+  // Hook para inspeccionar capacidades de la cámara (Zoom y Autofoco) y enganchar el hardware detector
+  const hookVideoTrackAndDetector = useCallback(() => {
+    setTimeout(() => {
+      const videoEl = document.querySelector(`#${readerId} video`) as HTMLVideoElement | null
+      if (videoEl && videoEl.srcObject) {
+        const stream = videoEl.srcObject as MediaStream
+        const track = stream.getVideoTracks()[0]
+        if (track) {
+          activeVideoTrackRef.current = track
+          try {
+            const caps = track.getCapabilities ? (track.getCapabilities() as any) : null
+            if (caps && caps.zoom) {
+              setSupportsZoom(true)
+              const maxZ = Math.min(caps.zoom.max || 3, 3)
+              setMaxZoom(maxZ)
             }
-          }, 300)
+          } catch {}
         }
-      } catch (err) {
-        console.warn('Fallback a cámara general por error HD:', err)
-        try {
-          if (html5QrCode && isMounted) {
-            await html5QrCode.start(
-              { facingMode: 'environment' },
-              { fps: 25, aspectRatio: 1.0 },
-              (decodedText) => handleTokenScanned(decodedText),
-              () => {}
-            )
-            setIsScanning(true)
-            setCameraError(null)
-          }
-        } catch (innerErr) {
-          if (isMounted) {
-            setCameraError(
-              'No se pudo iniciar la cámara en vivo. Podés subir una foto del QR o ingresar el token debajo.'
-            )
-          }
-        }
+
+        // Iniciar detector nativo por hardware a 60fps sobre el video
+        startHardwareDetector(videoEl)
       }
+    }, 400)
+  }, [startHardwareDetector])
+
+  const startScannerEngine = useCallback(async () => {
+    setCameraError(null)
+    setIsScanning(false)
+
+    // 1. Limpiar cualquier instancia previa
+    if (scannerRef.current) {
+      try {
+        if (scannerRef.current.isScanning) {
+          await scannerRef.current.stop()
+        }
+      } catch {}
+      scannerRef.current = null
     }
 
-    initScanner()
+    const scanConfig = {
+      fps: 25,
+      qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+        // Cobertura amplia (90% del visor) para lectura sin necesidad de encuadre milimétrico
+        const minEdge = Math.min(viewfinderWidth, viewfinderHeight)
+        const size = Math.max(160, Math.floor(minEdge * 0.9))
+        return { width: size, height: size }
+      },
+      aspectRatio: 1.0,
+    }
+
+    // 2. Intentar con cámara trasera primero ({ facingMode: 'environment' })
+    // Esta es la restricción W3C universalmente aceptada por iOS Safari y Android Chrome
+    try {
+      const scanner = new Html5Qrcode(readerId, {
+        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+        verbose: false,
+        experimentalFeatures: {
+          useBarCodeDetectorIfSupported: true,
+        },
+      })
+      scannerRef.current = scanner
+
+      await scanner.start(
+        { facingMode: 'environment' },
+        scanConfig,
+        (text) => handleTokenScanned(text),
+        () => {}
+      )
+
+      setIsScanning(true)
+      setCameraError(null)
+
+      // Enumerar cámaras en segundo plano para el selector
+      Html5Qrcode.getCameras()
+        .then((cams) => {
+          if (cams && cams.length > 0) setCameras(cams)
+        })
+        .catch(() => {})
+
+      hookVideoTrackAndDetector()
+      return
+    } catch (backErr) {
+      console.warn('No se pudo abrir cámara trasera, intentando cámara frontal:', backErr)
+    }
+
+    // 3. Fallback a cámara frontal o genérica (notebooks / tablets)
+    try {
+      const scanner = new Html5Qrcode(readerId, {
+        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+        verbose: false,
+        experimentalFeatures: {
+          useBarCodeDetectorIfSupported: true,
+        },
+      })
+      scannerRef.current = scanner
+
+      await scanner.start(
+        { facingMode: 'user' },
+        scanConfig,
+        (text) => handleTokenScanned(text),
+        () => {}
+      )
+
+      setIsScanning(true)
+      setCameraError(null)
+
+      hookVideoTrackAndDetector()
+      return
+    } catch (frontErr) {
+      console.error('Error definitivo al abrir cámara:', frontErr)
+      setCameraError(
+        'Permiso de cámara bloqueado o cámara no disponible. Tocá "Reintentar" o subí una captura del QR debajo.'
+      )
+    }
+  }, [handleTokenScanned, hookVideoTrackAndDetector])
+
+  useEffect(() => {
+    startScannerEngine()
 
     return () => {
-      isMounted = false
       if (stopNativeDetectorRef.current) {
         stopNativeDetectorRef.current()
         stopNativeDetectorRef.current = null
@@ -290,43 +281,49 @@ export function QrScannerView({ tenantSlug, onOrderDetected }: QrScannerViewProp
         }
       }
     }
-  }, [tenantSlug, handleTokenScanned, startHardwareDetector, applyZoom])
+  }, [startScannerEngine])
 
-  // Alternar entre cámaras
+  // Alternar entre cámaras si hay más de una detectada
   const handleSwitchCamera = async () => {
-    if (cameras.length < 2 || !scannerRef.current) return
-    const nextIndex = (currentCameraIndex + 1) % cameras.length
-    setCurrentCameraIndex(nextIndex)
-    const nextCam = cameras[nextIndex]
-
-    if (stopNativeDetectorRef.current) {
-      stopNativeDetectorRef.current()
-      stopNativeDetectorRef.current = null
-    }
-
     try {
+      let cams = cameras
+      if (cams.length === 0) {
+        cams = await Html5Qrcode.getCameras()
+        setCameras(cams)
+      }
+      if (cams.length < 2 || !scannerRef.current) return
+
+      const nextIndex = (currentCameraIndex + 1) % cams.length
+      setCurrentCameraIndex(nextIndex)
+      const targetCam = cams[nextIndex]
+
+      if (stopNativeDetectorRef.current) {
+        stopNativeDetectorRef.current()
+        stopNativeDetectorRef.current = null
+      }
+
       if (scannerRef.current.isScanning) {
         await scannerRef.current.stop()
       }
-      await scannerRef.current.start(
-        {
-          deviceId: { exact: nextCam.id },
-          facingMode: 'environment',
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
+
+      const scanConfig = {
+        fps: 25,
+        qrbox: (w: number, h: number) => {
+          const s = Math.floor(Math.min(w, h) * 0.9)
+          return { width: s, height: s }
         },
-        { fps: 30, aspectRatio: 1.0 },
+        aspectRatio: 1.0,
+      }
+
+      await scannerRef.current.start(
+        targetCam.id,
+        scanConfig,
         (decodedText) => handleTokenScanned(decodedText),
         () => {}
       )
-      setCameraError(null)
 
-      setTimeout(() => {
-        const videoEl = document.querySelector(`#${readerId} video`) as HTMLVideoElement | null
-        if (videoEl) {
-          startHardwareDetector(videoEl)
-        }
-      }, 300)
+      setCameraError(null)
+      hookVideoTrackAndDetector()
     } catch (err) {
       console.warn('Error alternando cámara:', err)
     }
@@ -363,7 +360,7 @@ export function QrScannerView({ tenantSlug, onOrderDetected }: QrScannerViewProp
 
   return (
     <div className="space-y-4">
-      {/* Estilos inyectados: video 100% fluido en Full HD sin recorte */}
+      {/* Estilos inyectados: video 100% fluido en la pantalla */}
       <style jsx global>{`
         #bar-qr-reader-viewport {
           width: 100% !important;
@@ -378,7 +375,8 @@ export function QrScannerView({ tenantSlug, onOrderDetected }: QrScannerViewProp
           border-radius: 1.5rem !important;
         }
         #qr-shaded-region {
-          display: none !important;
+          border-radius: 1rem !important;
+          border-color: rgba(168, 85, 247, 0.4) !important;
         }
       `}</style>
 
@@ -394,17 +392,17 @@ export function QrScannerView({ tenantSlug, onOrderDetected }: QrScannerViewProp
       >
         <div id={readerId} className="w-full h-full object-cover" />
 
-        {/* Mira Láser Dinámica de Alto Alcance */}
+        {/* Mira Láser de Enfoque */}
         <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-6">
           <div className="w-full h-full border-2 border-white/20 rounded-2xl relative flex items-center justify-center">
-            {/* Esquinas Estilo Escáner Profesional */}
+            {/* Esquinas Neón */}
             <div className="absolute top-0 left-0 w-7 h-7 border-t-4 border-l-4 border-purple-400 rounded-tl-xl" />
             <div className="absolute top-0 right-0 w-7 h-7 border-t-4 border-r-4 border-purple-400 rounded-tr-xl" />
             <div className="absolute bottom-0 left-0 w-7 h-7 border-b-4 border-l-4 border-purple-400 rounded-bl-xl" />
             <div className="absolute bottom-0 right-0 w-7 h-7 border-b-4 border-r-4 border-purple-400 rounded-br-xl" />
 
-            {/* Haz Láser Neón Continuo */}
-            <div className="w-full h-0.5 bg-gradient-to-r from-transparent via-pink-500 to-transparent shadow-[0_0_12px_#ec4899] animate-pulse" />
+            {/* Haz Láser Neón */}
+            <div className="w-4/5 h-0.5 bg-gradient-to-r from-transparent via-pink-500 to-transparent shadow-[0_0_12px_#ec4899] animate-pulse" />
           </div>
         </div>
 
@@ -449,7 +447,7 @@ export function QrScannerView({ tenantSlug, onOrderDetected }: QrScannerViewProp
         )}
       </div>
 
-      {/* Controles de Lente y Archivos */}
+      {/* Controles de Lente, Reintentar y Archivos */}
       <div className="flex items-center justify-center gap-2 max-w-sm mx-auto">
         {cameras.length > 1 && (
           <button
@@ -479,14 +477,23 @@ export function QrScannerView({ tenantSlug, onOrderDetected }: QrScannerViewProp
       </div>
 
       {cameraError && (
-        <div className="p-3 bg-amber-500/15 border border-amber-500/30 text-amber-200 rounded-2xl text-xs flex items-start gap-2 max-w-sm mx-auto">
-          <AlertCircle className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" />
-          <span>{cameraError}</span>
+        <div className="p-3 bg-amber-500/15 border border-amber-500/30 text-amber-200 rounded-2xl text-xs space-y-2 max-w-sm mx-auto">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" />
+            <span>{cameraError}</span>
+          </div>
+          <button
+            onClick={startScannerEngine}
+            className="w-full bg-amber-500/30 hover:bg-amber-500/40 border border-amber-500/50 text-white font-bold py-2 rounded-xl text-xs flex items-center justify-center gap-2 transition-all active:scale-95"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span>Reintentar Abrir Cámara</span>
+          </button>
         </div>
       )}
 
       <p className="text-center text-xs text-white/50">
-        Reconocimiento instantáneo de alta velocidad en Full HD. Funciona desde 1 a 2 metros.
+        Reconocimiento instantáneo de alta velocidad. Apuntá al QR del cliente desde cualquier distancia.
       </p>
 
       {/* Entrada Manual de Respaldo */}

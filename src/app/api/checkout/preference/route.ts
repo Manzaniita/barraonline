@@ -25,9 +25,9 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    if (!customer || !customer.dni || !customer.fullName) {
+    if (!customer || (!customer.dni && !customer.email && !customer.userId) || !customer.fullName) {
       return NextResponse.json(
-        { error: 'Identificación obligatoria: DNI y Nombre Completo requeridos.' },
+        { error: 'Iniciá sesión con tu cuenta antes de finalizar el pedido.' },
         { status: 400 }
       )
     }
@@ -82,18 +82,27 @@ export async function POST(req: NextRequest) {
       })
 
       if (dbTenant) {
-        const cleanDni = customer.dni.replace(/\D/g, '')
+        const cleanDni = (customer.dni || '').replace(/\D/g, '') || null
+        const cleanEmail = customer.email?.trim().toLowerCase() || null
 
-        // Buscar o crear usuario comprador por DNI
-        let user = await prisma.user.findFirst({
-          where: { dni: cleanDni },
-        })
+        // Buscar usuario existente por userId, email o DNI
+        let user = null
+        if (customer.userId) {
+          user = await prisma.user.findUnique({ where: { id: customer.userId } })
+        }
+        if (!user && cleanEmail) {
+          user = await prisma.user.findFirst({ where: { email: cleanEmail } })
+        }
+        if (!user && cleanDni) {
+          user = await prisma.user.findFirst({ where: { dni: cleanDni } })
+        }
 
         if (!user) {
           user = await prisma.user.create({
             data: {
               tenantId: dbTenant.id,
               dni: cleanDni,
+              email: cleanEmail,
               fullName: customer.fullName,
               phone: customer.phone || null,
               role: 'CUSTOMER',

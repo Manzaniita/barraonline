@@ -53,8 +53,8 @@ export function CartDrawer({ tenantSlug, nightclubName }: CartDrawerProps) {
   }).format(totalAmount)
 
   const handleCheckoutClick = async () => {
-    // Si el usuario no completó DNI, abrir modal obligatorio de 5 segundos
-    if (!customer || !customer.dni) {
+    // Si el usuario aún no inició sesión, abrir selector de cuenta
+    if (!customer) {
       setIsAuthModalOpen(true)
       return
     }

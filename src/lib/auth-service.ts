@@ -272,21 +272,24 @@ export async function loginAccount({
 }
 
 /**
- * Inicia sesión o registra gratuitamente con Google o Apple.
+ * Inicia sesión o registra gratuitamente con Google o Apple en 1 clic.
+ * Si no existe la cuenta la crea automáticamente; si existe inicia sesión sola.
  */
 export async function socialLoginAccount({
   provider,
   email,
   fullName,
   providerId,
+  avatarUrl,
   dni,
   phone,
   tenantSlug,
 }: {
   provider: 'google' | 'apple'
   email: string
-  fullName: string
+  fullName?: string
   providerId?: string
+  avatarUrl?: string
   dni?: string
   phone?: string
   tenantSlug?: string
@@ -294,6 +297,14 @@ export async function socialLoginAccount({
   const cleanEmail = email.trim().toLowerCase()
   const cleanDni = dni?.replace(/\D/g, '') || null
   const cleanPhone = phone?.replace(/\D/g, '') || null
+
+  // Derivar nombre legible desde el email si el proveedor no lo envió
+  const derivedName =
+    fullName?.trim() ||
+    cleanEmail
+      .split('@')[0]
+      .replace(/[._-]+/g, ' ')
+      .replace(/\b\w/g, (l) => l.toUpperCase())
 
   let tenantId: string | null = null
   if (tenantSlug) {
@@ -315,9 +326,10 @@ export async function socialLoginAccount({
       where: { id: existing.id },
       data: {
         email: cleanEmail || existing.email,
-        fullName: existing.fullName || fullName.trim(),
+        fullName: existing.fullName || derivedName,
         dni: cleanDni || existing.dni,
         phone: cleanPhone || existing.phone,
+        avatarUrl: avatarUrl || existing.avatarUrl,
         authProvider: provider,
         authProviderId: existing.authProviderId || providerId || `${provider}-${cleanEmail}`,
       },
@@ -329,9 +341,10 @@ export async function socialLoginAccount({
   const created = await prisma.user.create({
     data: {
       email: cleanEmail,
-      fullName: fullName.trim(),
+      fullName: derivedName,
       dni: cleanDni,
       phone: cleanPhone,
+      avatarUrl: avatarUrl || null,
       authProvider: provider,
       authProviderId: providerId || `${provider}-${cleanEmail}`,
       tenantId,

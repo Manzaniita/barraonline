@@ -150,10 +150,6 @@ export const DEMO_TENANT: TenantWithCatalog = {
  * retorna de forma segura los datos de alta fidelidad.
  */
 export async function getTenantAndCatalog(slug: string): Promise<TenantWithCatalog | null> {
-  if (slug === 'demo-club' || slug === 'palermo-club') {
-    return DEMO_TENANT
-  }
-
   try {
     const tenant = await prisma.tenant.findUnique({
       where: { slug },
@@ -165,52 +161,52 @@ export async function getTenantAndCatalog(slug: string): Promise<TenantWithCatal
       },
     })
 
-    if (!tenant) {
-      return null
-    }
+    if (tenant && tenant.products.length > 0) {
+      const defaultTheme: ThemeConfig = {
+        primaryColor: '#8b5cf6',
+        primaryHover: '#7c3aed',
+        secondaryColor: '#ec4899',
+        backgroundColor: '#0a0a0c',
+        cardBackground: '#13131a',
+        textColor: '#f8fafc',
+        nightclubName: tenant.name,
+      }
 
-    const defaultTheme: ThemeConfig = {
-      primaryColor: '#8b5cf6',
-      primaryHover: '#7c3aed',
-      secondaryColor: '#ec4899',
-      backgroundColor: '#0a0a0c',
-      cardBackground: '#13131a',
-      textColor: '#f8fafc',
-      nightclubName: tenant.name,
-    }
+      const rawTheme = tenant.themeConfig as Record<string, unknown> | null
+      const themeConfig: ThemeConfig = {
+        ...defaultTheme,
+        ...(rawTheme || {}),
+        nightclubName: tenant.name,
+      }
 
-    const rawTheme = tenant.themeConfig as Record<string, unknown> | null
-    const themeConfig: ThemeConfig = {
-      ...defaultTheme,
-      ...(rawTheme || {}),
-      nightclubName: tenant.name,
-    }
+      const products: StoreProduct[] = tenant.products.map((p) => ({
+        id: p.id,
+        name: p.name,
+        description: p.description,
+        category: p.category,
+        price: Number(p.price),
+        imageUrl: p.imageUrl,
+        stockAvailable: p.stockAvailable,
+        redeemDeadlineTime: p.redeemDeadlineTime,
+        isActive: p.isActive,
+      }))
 
-    const products: StoreProduct[] = tenant.products.map((p) => ({
-      id: p.id,
-      name: p.name,
-      description: p.description,
-      category: p.category,
-      price: Number(p.price),
-      imageUrl: p.imageUrl,
-      stockAvailable: p.stockAvailable,
-      redeemDeadlineTime: p.redeemDeadlineTime,
-      isActive: p.isActive,
-    }))
-
-    return {
-      id: tenant.id,
-      slug: tenant.slug,
-      name: tenant.name,
-      themeConfig,
-      products,
+      return {
+        id: tenant.id,
+        slug: tenant.slug,
+        name: tenant.name,
+        themeConfig,
+        products,
+      }
     }
   } catch (error) {
-    console.warn(`[getTenantAndCatalog] Base de datos no disponible, usando fallback demo para slug '${slug}':`, error)
-    return {
-      ...DEMO_TENANT,
-      slug,
-      name: slug.toUpperCase().replace(/-/g, ' '),
-    }
+    console.warn(`[getTenantAndCatalog] Error o base no disponible, usando fallback:`, error)
   }
+
+  // Fallback solo si la base de datos no está disponible o no tiene productos
+  if (slug === 'demo-club' || slug === 'palermo-club') {
+    return DEMO_TENANT
+  }
+
+  return null
 }

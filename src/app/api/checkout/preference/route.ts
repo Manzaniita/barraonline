@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { Tenant, Product } from '@prisma/client'
 import { getTenantAndCatalog } from '@/lib/catalog-service'
 import {
   getMercadoPagoClient,
@@ -9,6 +10,8 @@ import {
   CheckoutItemInput,
 } from '@/lib/mercadopago'
 import crypto from 'crypto'
+
+type TenantWithProducts = Tenant & { products: Product[] }
 
 export async function POST(req: NextRequest) {
   try {
@@ -71,29 +74,57 @@ export async function POST(req: NextRequest) {
     const baseUrl = `${protocol}://${host}`
 
     // 3. Intentar persistencia en base de datos PostgreSQL si está conectada
-    let dbTenant = null
+    let dbTenant: TenantWithProducts | null = null
     try {
       dbTenant = await prisma.tenant.findUnique({
         where: { slug: tenantSlug },
+        include: { products: true },
       })
 
       if (dbTenant) {
+        const cleanDni = customer.dni.replace(/\D/g, '')
+
         // Buscar o crear usuario comprador por DNI
         let user = await prisma.user.findFirst({
-          where: { dni: customer.dni },
+          where: { dni: cleanDni },
         })
 
         if (!user) {
           user = await prisma.user.create({
             data: {
               tenantId: dbTenant.id,
-              dni: customer.dni,
+              dni: cleanDni,
               fullName: customer.fullName,
               phone: customer.phone || null,
               role: 'CUSTOMER',
             },
           })
+        } else if (customer.fullName && user.fullName !== customer.fullName) {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { fullName: customer.fullName },
+          })
         }
+
+        // Mapear cada item asegurando que productId sea un UUID real existente en dbTenant.products
+        const tenantProducts = dbTenant.products
+        const orderItemsData = verifiedItems.map((item) => {
+          const dbProd =
+            tenantProducts.find((p) => p.id === item.productId) ||
+            tenantProducts.find((p) => p.name.toLowerCase() === item.name.toLowerCase()) ||
+            tenantProducts[0]
+
+          return {
+            productId: dbProd ? dbProd.id : item.productId,
+            productNameSnapshot: item.name,
+            unitPrice: item.unitPrice,
+            quantityPurchased: item.quantity,
+            quantityRedeemed: 0,
+            redeemDeadlineAt: item.redeemDeadlineTime
+              ? calculatePromoDeadline(item.redeemDeadlineTime)
+              : null,
+          }
+        })
 
         // Crear Orden en estado PENDING
         await prisma.order.create({
@@ -105,22 +136,13 @@ export async function POST(req: NextRequest) {
             totalAmount: totalAmount,
             expiresAt,
             items: {
-              create: verifiedItems.map((item) => ({
-                productId: item.productId,
-                productNameSnapshot: item.name,
-                unitPrice: item.unitPrice,
-                quantityPurchased: item.quantity,
-                quantityRedeemed: 0,
-                redeemDeadlineAt: item.redeemDeadlineTime
-                  ? calculatePromoDeadline(item.redeemDeadlineTime)
-                  : null,
-              })),
+              create: orderItemsData,
             },
           },
         })
       }
     } catch (dbErr) {
-      console.warn('[checkout/preference] Base de datos no disponible, continuando en modo demo/memoria:', dbErr)
+      console.error('[checkout/preference] Error persistiendo orden en PostgreSQL:', dbErr)
     }
 
     // 4. Si el boliche tiene credenciales reales de Mercado Pago configuradas

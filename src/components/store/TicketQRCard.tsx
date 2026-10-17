@@ -60,24 +60,28 @@ export function TicketQRCard({
             orderId,
             tenantSlug,
             userDni: customer.dni,
+            customerName: customer.fullName,
           }),
         })
 
         const data = await response.json()
         const qrToken = data.qrToken || `mock.token.${orderId}`
+        const dbOrder = data.order
 
         const ticket: TicketData = {
           orderId,
           tenantSlug,
           nightclubName,
-          customerName: customer.fullName,
-          customerDni: customer.dni,
-          totalAmount: 14000,
+          customerName: dbOrder?.customerName || customer.fullName,
+          customerDni: dbOrder?.customerDni || customer.dni,
+          totalAmount: dbOrder?.totalAmount || 14000,
           expiresAt: data.expiresAt || new Date(Date.now() + 1000 * 60 * 60 * 10).toISOString(),
-          items: [
-            { name: 'Fernet Branca con Coca', quantity: 2, unitPrice: 6500 },
-            { name: 'Agua Mineral Kin', quantity: 1, unitPrice: 1000 },
-          ],
+          items: dbOrder?.items?.length
+            ? dbOrder.items
+            : [
+                { name: 'Fernet Branca con Coca 750ml', quantity: 2, unitPrice: 6500 },
+                { name: 'Agua Mineral Kin con o sin gas 500ml', quantity: 1, unitPrice: 1000 },
+              ],
           qrToken,
         }
 

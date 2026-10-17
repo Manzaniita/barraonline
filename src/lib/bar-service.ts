@@ -402,7 +402,8 @@ export async function lookupOrdersByDni({
   const cleanDni = dni.replace(/\D/g, '')
 
   try {
-    const user = await prisma.user.findFirst({
+    // Buscar todos los registros de usuario que coincidan con el DNI
+    const users = await prisma.user.findMany({
       where: { dni: cleanDni },
       include: {
         orders: {
@@ -417,7 +418,7 @@ export async function lookupOrdersByDni({
       },
     })
 
-    if (!user) {
+    if (!users || users.length === 0) {
       return {
         found: false,
         canRedeemFromDni: false,
@@ -427,14 +428,20 @@ export async function lookupOrdersByDni({
       }
     }
 
-    const orders = user.orders.map((o) => ({
+    // Tomar el nombre del usuario más representativo
+    const primaryUser = users.find((u) => u.fullName && u.fullName.trim() !== '') || users[0]
+    
+    // Aplanar todas las órdenes asociadas al DNI
+    const allOrders = users.flatMap((u) => u.orders)
+
+    const orders = allOrders.map((o) => ({
       orderId: o.id,
-      tenantName: o.tenant.name,
+      tenantName: o.tenant?.name || 'Boliche',
       status: o.status,
       totalAmount: Number(o.totalAmount),
       createdAt: o.createdAt.toISOString(),
       items: o.items.map((i) => ({
-        name: i.productNameSnapshot,
+        name: i.productNameSnapshot || i.product?.name || 'Bebida',
         purchased: i.quantityPurchased,
         redeemed: i.quantityRedeemed,
         remaining: Math.max(0, i.quantityPurchased - i.quantityRedeemed),
@@ -444,8 +451,8 @@ export async function lookupOrdersByDni({
     return {
       found: true,
       customer: {
-        fullName: user.fullName,
-        dni: user.dni,
+        fullName: primaryUser.fullName || 'Cliente',
+        dni: primaryUser.dni || cleanDni,
       },
       orders,
       canRedeemFromDni: false,

@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { requireApiRole } from '@/lib/session'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    const auth = await requireApiRole(req, ['SUPER_ADMIN'])
+    if (auth.error) return auth.error
     const tenants = await prisma.tenant.findMany({
       orderBy: { createdAt: 'desc' },
       include: {
@@ -74,6 +77,9 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
+    const auth = await requireApiRole(req, ['SUPER_ADMIN'])
+    if (auth.error) return auth.error
+
     const body = await req.json()
     const { name, slug, brandColor, accentColor, feePercentage, plan } = body
 
@@ -168,6 +174,9 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
+    const auth = await requireApiRole(req, ['SUPER_ADMIN'])
+    if (auth.error) return auth.error
+
     const body = await req.json()
     const { id, status, feePercentage, plan } = body
 

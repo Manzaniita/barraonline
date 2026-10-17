@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { toggleProductStatus, updateProductDetails } from '@/lib/admin-service'
+import { ADMIN_ROLES, requireApiRole } from '@/lib/session'
 
 export async function POST(req: NextRequest) {
   try {
+    const auth = await requireApiRole(req, ADMIN_ROLES)
+    if (auth.error) return auth.error
+
     const body = await req.json()
     const { productId, isActive, price, stockAvailable } = body
 

@@ -26,49 +26,14 @@ import {
   ExternalLink,
   Eye,
   EyeOff,
-  UserPlus,
-  ChevronRight,
 } from 'lucide-react'
-
-interface DeviceSocialAccount {
-  email: string
-  fullName: string
-  avatarUrl?: string | null
-  provider?: 'google' | 'apple'
-  role?: string
-}
-
-const DEVICE_ACCOUNTS_KEY = 'bo_device_social_accounts_v1'
-
-function getSavedDeviceAccounts(): DeviceSocialAccount[] {
-  if (typeof window === 'undefined') return []
-  try {
-    const raw = localStorage.getItem(DEVICE_ACCOUNTS_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
-  }
-}
-
-function addDeviceAccount(acc: DeviceSocialAccount) {
-  if (typeof window === 'undefined') return
-  try {
-    const current = getSavedDeviceAccounts()
-    const filtered = current.filter(
-      (a) => a.email.toLowerCase() !== acc.email.toLowerCase()
-    )
-    const updated = [acc, ...filtered].slice(0, 6)
-    localStorage.setItem(DEVICE_ACCOUNTS_KEY, JSON.stringify(updated))
-  } catch {}
-}
 
 interface CustomerAuthModalProps {
   isOpen: boolean
   onClose: () => void
   onSuccess: (profile: CustomerProfile) => void
   requiredNotice?: string
+  initialError?: string | null
   tenantSlug?: string
 }
 
@@ -77,12 +42,10 @@ export function CustomerAuthModal({
   onClose,
   onSuccess,
   requiredNotice,
+  initialError,
   tenantSlug = 'demo-club',
 }: CustomerAuthModalProps) {
-  const [mode, setMode] = useState<'login' | 'register' | 'social_picker' | 'account'>('login')
-  const [socialProvider, setSocialProvider] = useState<'google' | 'apple'>('google')
-  const [showOtherAccountInput, setShowOtherAccountInput] = useState(false)
-  const [deviceAccounts, setDeviceAccounts] = useState<DeviceSocialAccount[]>([])
+  const [mode, setMode] = useState<'login' | 'register' | 'account'>('login')
 
   // Campos de formulario
   const [identifier, setIdentifier] = useState('')
@@ -100,82 +63,66 @@ export function CustomerAuthModal({
 
   const [currentUser, setCurrentUser] = useState<CustomerProfile | null>(null)
   const [loading, setLoading] = useState(false)
-  const [selectingEmail, setSelectingEmail] = useState<string | null>(null)
+  const [oauthRedirecting, setOauthRedirecting] = useState<'google' | 'apple' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
 
   useEffect(() => {
     if (isOpen) {
-      setError(null)
+      setError(initialError || null)
       setSuccessMsg(null)
-      setShowOtherAccountInput(false)
+      setOauthRedirecting(null)
 
-      // Cargar cuentas recordadas en el teléfono + cuentas activas
-      const localAccounts = getSavedDeviceAccounts()
-      setDeviceAccounts(localAccounts)
+      // Limpiar cualquier rastro viejo de cuentas expuestas en localStorage
+      try {
+        localStorage.removeItem('bo_device_social_accounts_v1')
+      } catch {}
 
-      fetch('/api/auth/social')
+      fetch('/api/auth/me', { cache: 'no-store' })
         .then((r) => r.json())
         .then((data) => {
-          if (data.success && Array.isArray(data.accounts)) {
-            const mergedMap = new Map<string, DeviceSocialAccount>()
-            for (const a of localAccounts) {
-              mergedMap.set(a.email.toLowerCase(), a)
+          if (data.success && data.user) {
+            const updatedProfile: CustomerProfile = {
+              userId: data.user.id,
+              fullName: data.user.fullName || 'Usuario',
+              dni: data.user.dni || '',
+              email: data.user.email || undefined,
+              phone: data.user.phone || undefined,
+              role: data.user.role,
+              tenantSlug: data.user.tenantSlug || tenantSlug,
+              authProvider: data.user.authProvider,
+              hasPassword: data.user.hasPassword,
             }
-            for (const s of data.accounts) {
-              if (s.email && !mergedMap.has(s.email.toLowerCase())) {
-                mergedMap.set(s.email.toLowerCase(), {
-                  email: s.email,
-                  fullName: s.fullName || s.email.split('@')[0],
-                  avatarUrl: s.avatarUrl,
-                  role: s.role,
-                })
-              }
-            }
-            setDeviceAccounts(Array.from(mergedMap.values()))
+            saveCustomerProfile(updatedProfile)
+            setCurrentUser(updatedProfile)
+            setFullName(updatedProfile.fullName)
+            setDni(updatedProfile.dni)
+            setEmail(updatedProfile.email || '')
+            setPhone(updatedProfile.phone || '')
+            setMode('account')
+          } else {
+            // Si no hay sesión real en el servidor, limpiar perfil local
+            clearCustomerProfile()
+            setCurrentUser(null)
+            setMode('login')
           }
         })
-        .catch(() => {})
-
-      const saved = getSavedCustomerProfile()
-      if (saved) {
-        setCurrentUser(saved)
-        setFullName(saved.fullName || '')
-        setDni(saved.dni || '')
-        setEmail(saved.email || '')
-        setPhone(saved.phone || '')
-        setMode('account')
-
-        fetch(`/api/auth/me?userId=${saved.userId || ''}&dni=${saved.dni || ''}`)
-          .then((r) => r.json())
-          .then((data) => {
-            if (data.success && data.user) {
-              const updatedProfile: CustomerProfile = {
-                userId: data.user.id,
-                fullName: data.user.fullName || saved.fullName,
-                dni: data.user.dni || saved.dni || '',
-                email: data.user.email || saved.email,
-                phone: data.user.phone || saved.phone,
-                role: data.user.role,
-                tenantSlug: data.user.tenantSlug || tenantSlug,
-                authProvider: data.user.authProvider,
-                hasPassword: data.user.hasPassword,
-              }
-              saveCustomerProfile(updatedProfile)
-              setCurrentUser(updatedProfile)
-              setFullName(updatedProfile.fullName)
-              setDni(updatedProfile.dni)
-              setEmail(updatedProfile.email || '')
-              setPhone(updatedProfile.phone || '')
-            }
-          })
-          .catch(() => {})
-      } else {
-        setCurrentUser(null)
-        setMode('login')
-      }
+        .catch(() => {
+          const saved = getSavedCustomerProfile()
+          if (saved) {
+            setCurrentUser(saved)
+            setFullName(saved.fullName || '')
+            setDni(saved.dni || '')
+            setEmail(saved.email || '')
+            setPhone(saved.phone || '')
+            setMode('account')
+          } else {
+            setCurrentUser(null)
+            setMode('login')
+          }
+        })
     }
-  }, [isOpen, tenantSlug])
+  }, [isOpen, tenantSlug, initialError])
 
   if (!isOpen) return null
 
@@ -191,95 +138,24 @@ export function CustomerAuthModal({
       authProvider: apiUser.authProvider || 'credentials',
       hasPassword: apiUser.hasPassword,
     }
-    if (profile.email) {
-      addDeviceAccount({
-        email: profile.email,
-        fullName: profile.fullName,
-        role: profile.role,
-      })
-    }
     saveCustomerProfile(profile)
     setCurrentUser(profile)
     onSuccess(profile)
   }
 
   /**
-   * 1-Tap Login / Registro automático al elegir una cuenta del selector de Google o Apple.
-   * Si la cuenta no existe la crea sola; si ya existe inicia sesión directo.
+   * Redirige al flujo nativo OAuth 2.0 / OpenID Connect de Google o Apple
+   * para que el usuario elija su propia cuenta de Gmail o iCloud en el proveedor oficial.
    */
-  const handleSelectSocialAccount = async (
-    selectedEmail: string,
-    selectedName?: string,
-    providerOverride?: 'google' | 'apple'
-  ) => {
-    const targetProvider = providerOverride || socialProvider
+  const handleNativeOAuth = (provider: 'google' | 'apple') => {
     setError(null)
-    setSelectingEmail(selectedEmail)
-    setLoading(true)
-
-    try {
-      const res = await fetch('/api/auth/social', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          provider: targetProvider,
-          email: selectedEmail.trim(),
-          fullName: selectedName?.trim() || undefined,
-          tenantSlug,
-        }),
-      })
-      const data = await res.json()
-      if (!data.success) {
-        setError(data.error || 'No se pudo ingresar con la cuenta seleccionada.')
-      } else {
-        syncAndFinish(data.user)
-        onClose()
-      }
-    } catch {
-      setError('Error de conexión al iniciar sesión.')
-    } finally {
-      setSelectingEmail(null)
-      setLoading(false)
-    }
-  }
-
-  /**
-   * Dispara el selector nativo de Google Identity Services si hay GOOGLE_CLIENT_ID,
-   * o abre la hoja nativa de selección de cuentas del celular en 1 toque.
-   */
-  const handleOpenSocialPicker = (provider: 'google' | 'apple') => {
-    setSocialProvider(provider)
-    setError(null)
-    setShowOtherAccountInput(false)
-
-    const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
-    if (
-      provider === 'google' &&
-      googleClientId &&
-      typeof window !== 'undefined' &&
-      (window as any).google?.accounts?.oauth2
-    ) {
-      const tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
-        client_id: googleClientId,
-        scope: 'openid email profile',
-        prompt: 'select_account',
-        callback: async (resp: any) => {
-          if (resp?.access_token) {
-            const infoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-              headers: { Authorization: `Bearer ${resp.access_token}` },
-            })
-            const info = await infoRes.json()
-            if (info?.email) {
-              await handleSelectSocialAccount(info.email, info.name, 'google')
-            }
-          }
-        },
-      })
-      tokenClient.requestAccessToken()
-      return
-    }
-
-    setMode('social_picker')
+    setOauthRedirecting(provider)
+    const returnTo =
+      typeof window !== 'undefined' ? window.location.pathname : `/${tenantSlug}`
+    const url = `/api/auth/oauth/${provider}?returnTo=${encodeURIComponent(
+      returnTo
+    )}&tenant=${encodeURIComponent(tenantSlug)}`
+    window.location.assign(url)
   }
 
   // Iniciar Sesión con Correo / Teléfono / DNI + Clave
@@ -296,7 +172,7 @@ export function CustomerAuthModal({
       })
       const data = await res.json()
       if (!data.success) {
-        setError(data.error || 'No se pudo iniciar sesión.')
+        setError(data.error || 'Datos de acceso incorrectos.')
       } else {
         syncAndFinish(data.user)
         onClose()
@@ -371,7 +247,6 @@ export function CustomerAuthModal({
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId: currentUser?.userId,
           fullName,
           dni,
           email,
@@ -428,153 +303,8 @@ export function CustomerAuthModal({
           <X className="w-5 h-5" />
         </button>
 
-        {/* MODO 1: SELECTOR RÁPIDO DE CUENTAS DEL CELULAR (GOOGLE / APPLE 1-TAP) */}
-        {mode === 'social_picker' ? (
-          <div className="space-y-4">
-            <div className="text-center pt-1 pb-2 border-b border-white/10">
-              <div className="w-12 h-12 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center mx-auto mb-3 shadow-inner">
-                {socialProvider === 'google' ? (
-                  <svg className="w-6 h-6" viewBox="0 0 24 24">
-                    <path
-                      fill="#4285F4"
-                      d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"
-                    />
-                    <path
-                      fill="#34A853"
-                      d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.29v3.14C3.26 21.3 7.31 24 12 24z"
-                    />
-                    <path
-                      fill="#FBBC05"
-                      d="M5.28 14.24c-.24-.72-.38-1.49-.38-2.24s.14-1.52.38-2.24V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.99-3.14z"
-                    />
-                    <path
-                      fill="#EA4335"
-                      d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96z"
-                    />
-                  </svg>
-                ) : (
-                  <svg className="w-6 h-6 fill-current text-white" viewBox="0 0 24 24">
-                    <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09l.01-.01zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z" />
-                  </svg>
-                )}
-              </div>
-              <h3 className="font-bold text-lg text-white">
-                Elegí una cuenta
-              </h3>
-              <p className="text-xs text-white/60 mt-0.5">
-                para continuar a <span className="text-purple-400 font-semibold">BarraOnline</span> con{' '}
-                {socialProvider === 'google' ? 'Google' : 'Apple'}
-              </p>
-            </div>
-
-            {error && (
-              <div className="p-2.5 rounded-xl bg-red-500/15 border border-red-500/30 text-red-300 text-xs">
-                {error}
-              </div>
-            )}
-
-            {/* Lista de Cuentas para tocar y entrar en 1 clic */}
-            <div className="divide-y divide-white/10 border border-white/10 rounded-2xl overflow-hidden bg-white/[0.03]">
-              {deviceAccounts.map((acc) => {
-                const isSelecting = selectingEmail === acc.email
-                return (
-                  <button
-                    key={acc.email}
-                    type="button"
-                    disabled={loading}
-                    onClick={() => handleSelectSocialAccount(acc.email, acc.fullName)}
-                    className="w-full px-4 py-3.5 flex items-center justify-between gap-3 hover:bg-white/10 active:bg-white/15 transition-colors text-left"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-purple-600 to-pink-600 flex items-center justify-center text-white font-bold text-sm shrink-0">
-                        {acc.fullName.charAt(0).toUpperCase()}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-sm font-bold text-white truncate">
-                          {acc.fullName}
-                        </div>
-                        <div className="text-xs text-white/60 truncate">
-                          {acc.email}
-                        </div>
-                      </div>
-                    </div>
-
-                    {isSelecting ? (
-                      <div className="w-4 h-4 rounded-full border-2 border-t-purple-400 border-white/20 animate-spin shrink-0" />
-                    ) : (
-                      <ChevronRight className="w-4 h-4 text-white/40 shrink-0" />
-                    )}
-                  </button>
-                )
-              })}
-
-              {/* Opción Usar otra cuenta */}
-              {!showOtherAccountInput ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowOtherAccountInput(true)
-                    setEmail('')
-                  }}
-                  className="w-full px-4 py-3.5 flex items-center gap-3 hover:bg-white/10 transition-colors text-left"
-                >
-                  <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white/80 shrink-0">
-                    <UserPlus className="w-4 h-4" />
-                  </div>
-                  <span className="text-sm font-semibold text-white/90">
-                    Usar otra cuenta de {socialProvider === 'google' ? 'Google' : 'Apple'}
-                  </span>
-                </button>
-              ) : (
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault()
-                    if (email.trim()) {
-                      handleSelectSocialAccount(email.trim())
-                    }
-                  }}
-                  className="p-4 space-y-3 bg-black/30"
-                >
-                  <input
-                    type="email"
-                    required
-                    autoFocus
-                    name="email"
-                    autoComplete="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder={
-                      socialProvider === 'google'
-                        ? 'tu.correo@gmail.com'
-                        : 'tu.correo@icloud.com'
-                    }
-                    className="w-full bg-white/5 border border-white/15 rounded-xl py-2.5 px-3.5 text-sm text-white focus:outline-none focus:border-purple-500"
-                  />
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold text-xs shadow-lg"
-                  >
-                    {loading ? 'Ingresando...' : 'Continuar con esta cuenta'}
-                  </button>
-                </form>
-              )}
-            </div>
-
-            <p className="text-[11px] text-white/40 text-center leading-relaxed px-2">
-              Si no tenés cuenta en BarraOnline se creará automáticamente, y si ya tenés se iniciará tu sesión al instante.
-            </p>
-
-            <button
-              type="button"
-              onClick={() => setMode('login')}
-              className="w-full py-2 text-xs font-semibold text-white/50 hover:text-white transition-colors"
-            >
-              Volver a opciones de ingreso
-            </button>
-          </div>
-        ) : mode === 'account' && currentUser ? (
-          /* MODO 2: MI CUENTA (USUARIO LOGUEADO) */
+        {mode === 'account' && currentUser ? (
+          /* MODO MI CUENTA (USUARIO LOGUEADO) */
           <div>
             <div className="flex items-center gap-3 mb-4">
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-purple-600 to-pink-600 flex items-center justify-center text-white font-black text-lg shadow-lg shadow-purple-600/30">
@@ -592,7 +322,7 @@ export function CustomerAuthModal({
               </div>
             </div>
 
-            {/* Accesos Rápidos según el Rol asignado */}
+            {/* Accesos Rápidos estrictamente según el Rol autorizado */}
             {(currentUser.role === 'BARTENDER' ||
               currentUser.role === 'CLUB_ADMIN' ||
               currentUser.role === 'SUPER_ADMIN') && (
@@ -602,7 +332,7 @@ export function CustomerAuthModal({
                 </span>
                 <div className="flex flex-wrap gap-2">
                   <Link
-                    href={`/${tenantSlug}/barra`}
+                    href={`/${currentUser.tenantSlug || tenantSlug}/barra`}
                     onClick={onClose}
                     className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors"
                   >
@@ -611,7 +341,7 @@ export function CustomerAuthModal({
                   </Link>
                   {(currentUser.role === 'CLUB_ADMIN' || currentUser.role === 'SUPER_ADMIN') && (
                     <Link
-                      href={`/${tenantSlug}/admin`}
+                      href={`/${currentUser.tenantSlug || tenantSlug}/admin`}
                       onClick={onClose}
                       className="px-3 py-1.5 rounded-xl bg-pink-600 hover:bg-pink-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors"
                     >
@@ -719,7 +449,7 @@ export function CustomerAuthModal({
                       type="password"
                       value={currentPassword}
                       onChange={(e) => setCurrentPassword(e.target.value)}
-                      placeholder="Clave actual (opcional)"
+                      placeholder="Clave actual"
                       className="w-full bg-white/5 border border-white/10 rounded-xl py-2 px-3 text-xs focus:outline-none focus:border-purple-500"
                     />
                   )}
@@ -728,7 +458,9 @@ export function CustomerAuthModal({
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     placeholder="Nueva contraseña (mín. 4)"
-                    className="w-full bg-white/5 border border-white/10 rounded-xl py-2 px-3 text-xs focus:outline-none focus:border-purple-500 sm:col-span-2"
+                    className={`w-full bg-white/5 border border-white/10 rounded-xl py-2 px-3 text-xs focus:outline-none focus:border-purple-500 ${
+                      currentUser.hasPassword ? '' : 'sm:col-span-2'
+                    }`}
                   />
                 </div>
               </div>
@@ -766,7 +498,7 @@ export function CustomerAuthModal({
             </div>
           </div>
         ) : (
-          /* MODO 3: LOGIN / CREAR CUENTA */
+          /* MODO LOGIN / CREAR CUENTA */
           <div>
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-purple-400">
@@ -777,7 +509,7 @@ export function CustomerAuthModal({
                   {mode === 'login' ? 'Iniciar Sesión' : 'Crear Cuenta Gratis'}
                 </h3>
                 <p className="text-xs text-white/60">
-                  Elegí tu cuenta del celular o ingresá con clave
+                  Ingresá con tu cuenta de Google, Apple o con tu clave
                 </p>
               </div>
             </div>
@@ -788,14 +520,15 @@ export function CustomerAuthModal({
               </div>
             )}
 
-            {/* Botones 1-Tap Google y Apple (arriba y prominentes) */}
+            {/* Botones Nativos de Google y Apple OAuth */}
             <div className="grid grid-cols-2 gap-2.5 mb-4">
               <button
                 type="button"
-                onClick={() => handleOpenSocialPicker('google')}
-                className="flex items-center justify-center gap-2 py-3 px-3 rounded-xl bg-white text-gray-900 hover:bg-gray-100 font-bold text-xs transition-all shadow-md active:scale-95"
+                disabled={Boolean(oauthRedirecting)}
+                onClick={() => handleNativeOAuth('google')}
+                className="flex items-center justify-center gap-2 py-3 px-3 rounded-xl bg-white text-gray-900 hover:bg-gray-100 font-bold text-xs transition-all shadow-md active:scale-95 disabled:opacity-60"
               >
-                <svg className="w-4 h-4" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
                   <path
                     fill="#4285F4"
                     d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"
@@ -813,18 +546,19 @@ export function CustomerAuthModal({
                     d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96z"
                   />
                 </svg>
-                <span>Google</span>
+                <span>{oauthRedirecting === 'google' ? 'Abriendo...' : 'Continuar con Google'}</span>
               </button>
 
               <button
                 type="button"
-                onClick={() => handleOpenSocialPicker('apple')}
-                className="flex items-center justify-center gap-2 py-3 px-3 rounded-xl bg-white/10 hover:bg-white/15 border border-white/20 text-white font-bold text-xs transition-all active:scale-95"
+                disabled={Boolean(oauthRedirecting)}
+                onClick={() => handleNativeOAuth('apple')}
+                className="flex items-center justify-center gap-2 py-3 px-3 rounded-xl bg-white/10 hover:bg-white/15 border border-white/20 text-white font-bold text-xs transition-all active:scale-95 disabled:opacity-60"
               >
-                <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 fill-current shrink-0" viewBox="0 0 24 24">
                   <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09l.01-.01zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z" />
                 </svg>
-                <span>Apple</span>
+                <span>{oauthRedirecting === 'apple' ? 'Abriendo...' : 'Continuar con Apple'}</span>
               </button>
             </div>
 

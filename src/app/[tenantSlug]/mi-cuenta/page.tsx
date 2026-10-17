@@ -53,25 +53,16 @@ export default function MiCuentaPage() {
   }
 
   useEffect(() => {
-    const saved = getSavedCustomerProfile()
-    if (saved) {
-      setUser(saved)
-      setFullName(saved.fullName || '')
-      setDni(saved.dni || '')
-      setEmail(saved.email || '')
-      setPhone(saved.phone || '')
-    }
-
-    fetch(`/api/auth/me?userId=${saved?.userId || ''}&dni=${saved?.dni || ''}`)
+    fetch('/api/auth/me', { cache: 'no-store' })
       .then((res) => res.json())
       .then((data) => {
         if (data.success && data.user) {
           const synced: CustomerProfile = {
             userId: data.user.id,
-            fullName: data.user.fullName || saved?.fullName || '',
-            dni: data.user.dni || saved?.dni || '',
-            email: data.user.email || saved?.email || '',
-            phone: data.user.phone || saved?.phone || '',
+            fullName: data.user.fullName || '',
+            dni: data.user.dni || '',
+            email: data.user.email || '',
+            phone: data.user.phone || '',
             role: data.user.role,
             tenantSlug: data.user.tenantSlug || tenantSlug,
             authProvider: data.user.authProvider,
@@ -83,9 +74,21 @@ export default function MiCuentaPage() {
           setDni(synced.dni)
           setEmail(synced.email || '')
           setPhone(synced.phone || '')
+        } else {
+          clearCustomerProfile()
+          setUser(null)
         }
       })
-      .catch(() => {})
+      .catch(() => {
+        const saved = getSavedCustomerProfile()
+        if (saved) {
+          setUser(saved)
+          setFullName(saved.fullName || '')
+          setDni(saved.dni || '')
+          setEmail(saved.email || '')
+          setPhone(saved.phone || '')
+        }
+      })
       .finally(() => setLoading(false))
   }, [tenantSlug])
 
@@ -104,7 +107,6 @@ export default function MiCuentaPage() {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId: user.userId,
           fullName,
           dni,
           email,

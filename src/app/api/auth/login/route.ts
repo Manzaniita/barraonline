@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { loginAccount, createSessionToken } from '@/lib/auth-service'
+import { loginAccount } from '@/lib/auth-service'
+import { publicSelf, setSessionCookie } from '@/lib/session'
 
 export async function POST(req: NextRequest) {
   try {
@@ -14,26 +15,13 @@ export async function POST(req: NextRequest) {
     }
 
     const user = await loginAccount({ identifier, password })
-    const token = createSessionToken(user)
 
-    const res = NextResponse.json({
-      success: true,
-      user,
-      token,
-    })
-
-    res.cookies.set('bo_session', token, {
-      httpOnly: false,
-      path: '/',
-      maxAge: 90 * 24 * 60 * 60,
-      sameSite: 'lax',
-    })
-
+    const res = NextResponse.json({ success: true, user: publicSelf(user) })
+    setSessionCookie(res, user)
     return res
   } catch (error: any) {
-    console.error('[POST /api/auth/login] Error:', error)
     return NextResponse.json(
-      { success: false, error: error?.message || 'Credenciales inválidas.' },
+      { success: false, error: 'Datos de acceso incorrectos.' },
       { status: 401 }
     )
   }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { generateNightAuditCsv } from '@/lib/admin-service'
+import { ADMIN_ROLES, requireApiRole } from '@/lib/session'
 
 export const dynamic = 'force-dynamic'
 
@@ -7,6 +8,9 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
     const tenantSlug = searchParams.get('tenantSlug') || 'demo-club'
+
+    const auth = await requireApiRole(req, ADMIN_ROLES, tenantSlug)
+    if (auth.error) return auth.error
 
     const csvContent = await generateNightAuditCsv(tenantSlug)
 

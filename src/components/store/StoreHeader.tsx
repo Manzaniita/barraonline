@@ -4,11 +4,11 @@ import React, { useState, useEffect } from 'react'
 import { ThemeConfig } from '@/lib/catalog-service'
 import {
   CustomerProfile,
-  getSavedCustomerProfile,
   saveCustomerProfile,
+  clearCustomerProfile,
 } from '@/lib/customer-session'
 import { CustomerAuthModal } from './CustomerAuthModal'
-import { GlassWater, UserCheck, UserPlus, QrCode, Wine, Settings } from 'lucide-react'
+import { GlassWater, UserCheck, UserPlus, QrCode, Wine, Settings, ShieldCheck } from 'lucide-react'
 import Link from 'next/link'
 
 interface StoreHeaderProps {
@@ -19,24 +19,43 @@ interface StoreHeaderProps {
 export function StoreHeader({ theme, tenantSlug }: StoreHeaderProps) {
   const [customer, setCustomer] = useState<CustomerProfile | null>(null)
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
+  const [authError, setAuthError] = useState<string | null>(null)
 
   useEffect(() => {
-    const local = getSavedCustomerProfile()
-    if (local) {
-      setCustomer(local)
+    // Limpiar cualquier almacenamiento viejo de cuentas expuestas
+    try {
+      localStorage.removeItem('bo_device_social_accounts_v1')
+    } catch {}
+
+    // Revisar si venimos de regreso de Google / Apple OAuth con error o éxito
+    if (typeof window !== 'undefined') {
+      const sp = new URLSearchParams(window.location.search)
+      const err = sp.get('auth_error')
+      const authOk = sp.get('auth')
+      if (err) {
+        setAuthError(err)
+        setIsAuthModalOpen(true)
+      }
+      if (err || authOk) {
+        sp.delete('auth_error')
+        sp.delete('auth')
+        const cleanQuery = sp.toString()
+        const cleanUrl = `${window.location.pathname}${cleanQuery ? `?${cleanQuery}` : ''}`
+        window.history.replaceState({}, '', cleanUrl)
+      }
     }
 
-    // Sincronizar sesión y rol en vivo con el servidor
-    fetch(`/api/auth/me?userId=${local?.userId || ''}&dni=${local?.dni || ''}`)
+    // Sincronizar sesión y rol en vivo con el servidor (solo por cookie httpOnly)
+    fetch('/api/auth/me', { cache: 'no-store' })
       .then((res) => res.json())
       .then((data) => {
         if (data.success && data.user) {
           const synced: CustomerProfile = {
             userId: data.user.id,
-            dni: data.user.dni || local?.dni || '',
-            fullName: data.user.fullName || local?.fullName || 'Usuario',
-            email: data.user.email || local?.email,
-            phone: data.user.phone || local?.phone,
+            dni: data.user.dni || '',
+            fullName: data.user.fullName || 'Usuario',
+            email: data.user.email || undefined,
+            phone: data.user.phone || undefined,
             role: data.user.role,
             tenantSlug: data.user.tenantSlug || tenantSlug,
             authProvider: data.user.authProvider,
@@ -44,6 +63,9 @@ export function StoreHeader({ theme, tenantSlug }: StoreHeaderProps) {
           }
           saveCustomerProfile(synced)
           setCustomer(synced)
+        } else {
+          clearCustomerProfile()
+          setCustomer(null)
         }
       })
       .catch(() => {})
@@ -69,27 +91,36 @@ export function StoreHeader({ theme, tenantSlug }: StoreHeaderProps) {
 
         {/* Acciones de usuario */}
         <div className="flex items-center gap-1.5 shrink-0">
-          {/* Si tiene rol de Bartender o Admin, mostrar botón rápido */}
-          {customer?.role &&
-            (customer.role === 'BARTENDER' ||
-              customer.role === 'CLUB_ADMIN' ||
-              customer.role === 'SUPER_ADMIN') && (
-              <Link
-                href={
-                  customer.role === 'BARTENDER'
-                    ? `/${tenantSlug}/barra`
-                    : `/${tenantSlug}/admin`
-                }
-                className="p-2 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/40 text-purple-300 transition-colors flex items-center gap-1 text-xs font-bold"
-                title="Panel de Personal"
-              >
-                {customer.role === 'BARTENDER' ? (
-                  <Wine className="w-4 h-4 text-purple-400" />
-                ) : (
-                  <Settings className="w-4 h-4 text-pink-400" />
-                )}
-              </Link>
-            )}
+          {/* Solo mostrar accesos si el rol verificado por servidor lo permite */}
+          {customer?.role === 'BARTENDER' && (
+            <Link
+              href={`/${customer.tenantSlug || tenantSlug}/barra`}
+              className="p-2 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/40 text-purple-300 transition-colors flex items-center gap-1 text-xs font-bold"
+              title="Ir a Barra (Escáner)"
+            >
+              <Wine className="w-4 h-4 text-purple-400" />
+            </Link>
+          )}
+
+          {(customer?.role === 'CLUB_ADMIN' || customer?.role === 'SUPER_ADMIN') && (
+            <Link
+              href={`/${customer.tenantSlug || tenantSlug}/admin`}
+              className="p-2 rounded-xl bg-pink-600/20 hover:bg-pink-600/30 border border-pink-500/40 text-pink-300 transition-colors flex items-center gap-1 text-xs font-bold"
+              title="Panel Club Admin"
+            >
+              <Settings className="w-4 h-4 text-pink-400" />
+            </Link>
+          )}
+
+          {customer?.role === 'SUPER_ADMIN' && (
+            <Link
+              href="/superadmin"
+              className="p-2 rounded-xl bg-cyan-600/20 hover:bg-cyan-600/30 border border-cyan-500/40 text-cyan-300 transition-colors flex items-center gap-1 text-xs font-bold"
+              title="Panel SuperAdmin"
+            >
+              <ShieldCheck className="w-4 h-4 text-cyan-400" />
+            </Link>
+          )}
 
           {/* Botón Mis Tragos */}
           <Link
@@ -103,7 +134,10 @@ export function StoreHeader({ theme, tenantSlug }: StoreHeaderProps) {
 
           {/* Botón de Mi Cuenta / Ingresar */}
           <button
-            onClick={() => setIsAuthModalOpen(true)}
+            onClick={() => {
+              setAuthError(null)
+              setIsAuthModalOpen(true)
+            }}
             className={`flex items-center gap-1.5 px-2.5 py-2 rounded-xl border text-xs font-semibold transition-all ${
               customer
                 ? 'bg-purple-500/15 border-purple-500/30 text-purple-200 hover:bg-purple-500/25'
@@ -129,8 +163,12 @@ export function StoreHeader({ theme, tenantSlug }: StoreHeaderProps) {
 
       <CustomerAuthModal
         isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
+        onClose={() => {
+          setIsAuthModalOpen(false)
+          setAuthError(null)
+        }}
         onSuccess={(profile) => setCustomer(profile)}
+        initialError={authError}
         tenantSlug={tenantSlug}
       />
     </header>

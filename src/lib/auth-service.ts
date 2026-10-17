@@ -49,17 +49,9 @@ export function verifyPassword(password: string, storedHash: string): boolean {
  * Crea un token de sesión firmado con HMAC-SHA256 válido por 90 días.
  */
 export function createSessionToken(user: AuthUser): string {
+  // Solo el ID: el resto de los datos (incluido el rol) se lee SIEMPRE fresco desde la DB.
   const payload = {
     id: user.id,
-    email: user.email,
-    phone: user.phone,
-    dni: user.dni,
-    fullName: user.fullName,
-    role: user.role,
-    tenantId: user.tenantId,
-    tenantSlug: user.tenantSlug,
-    authProvider: user.authProvider,
-    hasPassword: user.hasPassword,
     exp: Math.floor(Date.now() / 1000) + 90 * 24 * 60 * 60, // 90 días
   }
   const base64Payload = Buffer.from(JSON.stringify(payload)).toString('base64url')
@@ -83,7 +75,9 @@ export function verifySessionToken(token: string): AuthUser | null {
       .update(base64Payload)
       .digest('base64url')
 
-    if (signature !== expectedSig) return null
+    const a = Buffer.from(signature)
+    const b = Buffer.from(expectedSig)
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null
 
     const payload = JSON.parse(Buffer.from(base64Payload, 'base64url').toString('utf-8'))
     if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
@@ -194,6 +188,15 @@ export async function registerAccount({
       throw new Error('Ya existe una cuenta registrada con esos datos. Por favor iniciá sesión.')
     }
 
+    // Nunca permitir "reclamar" con una clave una cuenta de Google/Apple, con email, o de personal:
+    // sería un robo de cuenta. Esas cuentas solo entran con su proveedor.
+    const isSocial = existing.authProvider === 'google' || existing.authProvider === 'apple'
+    if (isSocial || existing.email || existing.role !== 'CUSTOMER') {
+      throw new Error(
+        'Ya existe una cuenta con esos datos. Iniciá sesión con el método que usaste al crearla (Google, Apple o tu clave).'
+      )
+    }
+
     // Si era un cliente invitado (solo tenía DNI/teléfono por una compra previa), activamos su cuenta con clave
     const updated = await prisma.user.update({
       where: { id: existing.id },
@@ -248,105 +251,113 @@ export async function loginAccount({
     orConditions.push({ dni: digitsOnly })
   }
 
-  const user = await prisma.user.findFirst({
-    where: { OR: orConditions },
+  const candidates = await prisma.user.findMany({
+    where: { OR: orConditions, passwordHash: { not: null } },
     include: { tenant: true },
+    take: 5,
   })
 
-  if (!user) {
-    throw new Error('No encontramos una cuenta con ese correo, teléfono o DNI.')
+  // Mensaje genérico: nunca revelar si una cuenta existe o no.
+  const match = candidates.find((u) => u.passwordHash && verifyPassword(password, u.passwordHash))
+  if (!match) {
+    throw new Error('Datos de acceso incorrectos.')
   }
 
-  if (!user.passwordHash) {
-    throw new Error(
-      'Esta cuenta aún no tiene contraseña configurada. Usá la pestaña "Crear Cuenta" con tu DNI o correo para crear tu clave.'
-    )
-  }
-
-  const isValid = verifyPassword(password, user.passwordHash)
-  if (!isValid) {
-    throw new Error('Contraseña incorrecta.')
-  }
-
-  return toAuthUser(user)
+  return toAuthUser(match)
 }
 
 /**
- * Inicia sesión o registra gratuitamente con Google o Apple en 1 clic.
- * Si no existe la cuenta la crea automáticamente; si existe inicia sesión sola.
+ * Inicia sesión o registra con Google / Apple.
+ * SOLO debe llamarse con una identidad ya VERIFICADA del lado del servidor (id_token del proveedor).
+ * Se identifica al usuario por el `sub` del proveedor; si no existe, se vincula por email verificado
+ * o se crea una cuenta nueva de cliente.
  */
 export async function socialLoginAccount({
   provider,
+  subject,
   email,
+  emailVerified,
   fullName,
-  providerId,
   avatarUrl,
-  dni,
-  phone,
   tenantSlug,
 }: {
   provider: 'google' | 'apple'
-  email: string
-  fullName?: string
-  providerId?: string
-  avatarUrl?: string
-  dni?: string
-  phone?: string
-  tenantSlug?: string
+  subject: string
+  email?: string | null
+  emailVerified: boolean
+  fullName?: string | null
+  avatarUrl?: string | null
+  tenantSlug?: string | null
 }): Promise<AuthUser> {
-  const cleanEmail = email.trim().toLowerCase()
-  const cleanDni = dni?.replace(/\D/g, '') || null
-  const cleanPhone = phone?.replace(/\D/g, '') || null
+  if (!subject) throw new Error('Identidad del proveedor inválida.')
 
-  // Derivar nombre legible desde el email si el proveedor no lo envió
-  const derivedName =
-    fullName?.trim() ||
-    cleanEmail
-      .split('@')[0]
-      .replace(/[._-]+/g, ' ')
-      .replace(/\b\w/g, (l) => l.toUpperCase())
+  const providerKey = `${provider}:${subject}`
+  const cleanEmail = email?.trim().toLowerCase() || null
 
-  let tenantId: string | null = null
-  if (tenantSlug) {
-    const t = await prisma.tenant.findUnique({ where: { slug: tenantSlug } })
-    if (t) tenantId = t.id
-  }
-
-  const orConditions: any[] = [{ email: cleanEmail }]
-  if (providerId) orConditions.push({ authProviderId: providerId })
-  if (cleanDni) orConditions.push({ dni: cleanDni })
-
-  const existing = await prisma.user.findFirst({
-    where: { OR: orConditions },
+  // 1) Usuario ya vinculado a esta cuenta de Google/Apple
+  const linked = await prisma.user.findUnique({
+    where: { authProviderId: providerKey },
     include: { tenant: true },
   })
-
-  if (existing) {
+  if (linked) {
     const updated = await prisma.user.update({
-      where: { id: existing.id },
+      where: { id: linked.id },
       data: {
-        email: cleanEmail || existing.email,
-        fullName: existing.fullName || derivedName,
-        dni: cleanDni || existing.dni,
-        phone: cleanPhone || existing.phone,
-        avatarUrl: avatarUrl || existing.avatarUrl,
-        authProvider: provider,
-        authProviderId: existing.authProviderId || providerId || `${provider}-${cleanEmail}`,
+        email: linked.email || cleanEmail,
+        fullName: linked.fullName || fullName?.trim() || undefined,
+        avatarUrl: avatarUrl || linked.avatarUrl,
       },
       include: { tenant: true },
     })
     return toAuthUser(updated)
   }
 
+  // 2) Vincular a una cuenta existente con el mismo email (solo si el proveedor lo verificó)
+  if (cleanEmail && emailVerified) {
+    const byEmail = await prisma.user.findFirst({
+      where: { email: cleanEmail },
+      orderBy: { createdAt: 'asc' },
+      include: { tenant: true },
+    })
+    if (byEmail) {
+      const hasRealProviderLink = Boolean(byEmail.authProviderId && byEmail.authProviderId.includes(':'))
+      const updated = await prisma.user.update({
+        where: { id: byEmail.id },
+        data: {
+          fullName: byEmail.fullName || fullName?.trim() || undefined,
+          avatarUrl: avatarUrl || byEmail.avatarUrl,
+          // Reemplaza vínculos viejos/falsos (ej: "google-mail@x.com") por el sub real del proveedor
+          ...(hasRealProviderLink ? {} : { authProviderId: providerKey, authProvider: provider }),
+        },
+        include: { tenant: true },
+      })
+      return toAuthUser(updated)
+    }
+  }
+
+  // 3) Cuenta nueva
+  let tenantId: string | null = null
+  if (tenantSlug) {
+    const t = await prisma.tenant.findUnique({ where: { slug: tenantSlug } })
+    if (t) tenantId = t.id
+  }
+
+  const derivedName =
+    fullName?.trim() ||
+    (cleanEmail
+      ? cleanEmail
+          .split('@')[0]
+          .replace(/[._-]+/g, ' ')
+          .replace(/\b\w/g, (l) => l.toUpperCase())
+      : 'Usuario')
+
   const created = await prisma.user.create({
     data: {
-      email: cleanEmail,
+      email: emailVerified ? cleanEmail : null,
       fullName: derivedName,
-      dni: cleanDni,
-      phone: cleanPhone,
       avatarUrl: avatarUrl || null,
       authProvider: provider,
-      authProviderId: providerId || `${provider}-${cleanEmail}`,
+      authProviderId: providerKey,
       tenantId,
       role: 'CUSTOMER',
     },
@@ -425,10 +436,9 @@ export async function updateMyAccount({
     if (newPassword.length < 4) {
       throw new Error('La nueva contraseña debe tener al menos 4 caracteres.')
     }
-    if (user.passwordHash && currentPassword) {
-      const validCurrent = verifyPassword(currentPassword, user.passwordHash)
-      if (!validCurrent) {
-        throw new Error('La contraseña actual ingresada es incorrecta.')
+    if (user.passwordHash) {
+      if (!currentPassword || !verifyPassword(currentPassword, user.passwordHash)) {
+        throw new Error('Para cambiar la contraseña ingresá tu contraseña actual correcta.')
       }
     }
     updateData.passwordHash = hashPassword(newPassword)
@@ -449,21 +459,41 @@ export async function updateMyAccount({
 export async function listUsersForAdmin({
   tenantSlug,
   search,
+  scopeToTenant = true,
 }: {
   tenantSlug?: string
   search?: string
+  /** false solo para SUPER_ADMIN: ve todos los usuarios de la plataforma */
+  scopeToTenant?: boolean
 }) {
-  const whereClause: any = {}
+  const conditions: any[] = []
+  const q = search?.trim() || ''
 
-  if (search && search.trim()) {
-    const q = search.trim()
-    whereClause.OR = [
-      { fullName: { contains: q, mode: 'insensitive' } },
-      { email: { contains: q, mode: 'insensitive' } },
-      { dni: { contains: q } },
-      { phone: { contains: q } },
-    ]
+  if (q) {
+    conditions.push({
+      OR: [
+        { fullName: { contains: q, mode: 'insensitive' } },
+        { email: { contains: q, mode: 'insensitive' } },
+        { dni: { contains: q } },
+        { phone: { contains: q } },
+      ],
+    })
   }
+
+  if (scopeToTenant) {
+    if (!tenantSlug) return []
+    const exactMatch: any[] = []
+    if (q.includes('@')) exactMatch.push({ email: q.toLowerCase() })
+    const digits = q.replace(/\D/g, '')
+    if (digits.length >= 7) exactMatch.push({ dni: digits })
+    conditions.push({
+      OR: [{ tenant: { slug: tenantSlug } }, ...exactMatch],
+    })
+    // Un admin de boliche nunca ve a los superadmins
+    conditions.push({ role: { not: 'SUPER_ADMIN' } })
+  }
+
+  const whereClause: any = conditions.length ? { AND: conditions } : {}
 
   const users = await prisma.user.findMany({
     where: whereClause,

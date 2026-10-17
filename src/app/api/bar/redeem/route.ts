@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { redeemOrderItems } from '@/lib/bar-service'
+import { STAFF_ROLES, requireApiRole } from '@/lib/session'
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { qrToken, tenantSlug, bartenderUserId, deliveries } = body
+    const { qrToken, tenantSlug, deliveries } = body
+
+    const auth = await requireApiRole(req, STAFF_ROLES, tenantSlug || 'demo-club')
+    if (auth.error) return auth.error
 
     if (!qrToken || typeof qrToken !== 'string') {
       return NextResponse.json(
@@ -23,7 +27,7 @@ export async function POST(req: NextRequest) {
     const result = await redeemOrderItems({
       qrToken,
       tenantSlug: tenantSlug || 'demo-club',
-      bartenderUserId,
+      bartenderUserId: auth.user.id,
       deliveries,
     })
 

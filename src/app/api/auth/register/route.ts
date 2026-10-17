@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { registerAccount, createSessionToken } from '@/lib/auth-service'
+import { registerAccount } from '@/lib/auth-service'
+import { publicSelf, setSessionCookie } from '@/lib/session'
 
 export async function POST(req: NextRequest) {
   try {
@@ -22,24 +23,11 @@ export async function POST(req: NextRequest) {
       tenantSlug,
     })
 
-    const token = createSessionToken(user)
-
-    const res = NextResponse.json({
-      success: true,
-      user,
-      token,
-    })
-
-    res.cookies.set('bo_session', token, {
-      httpOnly: false,
-      path: '/',
-      maxAge: 90 * 24 * 60 * 60,
-      sameSite: 'lax',
-    })
-
+    const res = NextResponse.json({ success: true, user: publicSelf(user) })
+    setSessionCookie(res, user)
     return res
   } catch (error: any) {
-    console.error('[POST /api/auth/register] Error:', error)
+    console.error('[POST /api/auth/register] Error:', error?.message)
     return NextResponse.json(
       { success: false, error: error?.message || 'Error al registrar la cuenta.' },
       { status: 400 }

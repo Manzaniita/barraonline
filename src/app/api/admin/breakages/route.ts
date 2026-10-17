@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { recordBreakage } from '@/lib/admin-service'
+import { ADMIN_ROLES, requireApiRole } from '@/lib/session'
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { tenantSlug, productId, quantity, reason, notes, costEstimate, bartenderUserId } = body
+    const { tenantSlug, productId, quantity, reason, notes, costEstimate } = body
+
+    const auth = await requireApiRole(req, ADMIN_ROLES, tenantSlug)
+    if (auth.error) return auth.error
 
     if (!tenantSlug || !productId || !quantity || !reason) {
       return NextResponse.json(
@@ -20,7 +24,7 @@ export async function POST(req: NextRequest) {
       reason,
       notes,
       costEstimate: costEstimate ? Number(costEstimate) : undefined,
-      bartenderUserId,
+      bartenderUserId: auth.user.id,
     })
 
     return NextResponse.json({

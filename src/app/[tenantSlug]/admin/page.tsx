@@ -876,7 +876,7 @@ export default function ClubAdminPage() {
 
         {/* CONTENIDO TAB 4: EQUIPO & ROLES (USUARIOS) */}
         {activeTab === 'users' && (
-          <UsersRoleManager tenantSlug={tenantSlug} allowSuperAdminRole={true} />
+          <UsersRoleManager tenantSlug={tenantSlug} allowSuperAdminRole={false} />
         )}
       </main>
 

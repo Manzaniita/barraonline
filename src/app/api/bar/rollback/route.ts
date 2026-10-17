@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { rollbackRecentRedemption } from '@/lib/bar-service'
+import { STAFF_ROLES, requireApiRole } from '@/lib/session'
 
 export async function POST(req: NextRequest) {
   try {
-    const { redemptionLogIds, bartenderUserId } = await req.json()
+    const auth = await requireApiRole(req, STAFF_ROLES)
+    if (auth.error) return auth.error
+
+    const { redemptionLogIds } = await req.json()
 
     if (!redemptionLogIds || !Array.isArray(redemptionLogIds) || redemptionLogIds.length === 0) {
       return NextResponse.json(
@@ -14,7 +18,7 @@ export async function POST(req: NextRequest) {
 
     const result = await rollbackRecentRedemption({
       redemptionLogIds,
-      bartenderUserId,
+      bartenderUserId: auth.user.id,
     })
 
     if (!result.success) {

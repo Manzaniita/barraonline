@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyQrForBar } from '@/lib/bar-service'
+import { STAFF_ROLES, requireApiRole } from '@/lib/session'
 
 export async function POST(req: NextRequest) {
   try {
     const { qrToken, tenantSlug } = await req.json()
+
+    const auth = await requireApiRole(req, STAFF_ROLES, tenantSlug || 'demo-club')
+    if (auth.error) return auth.error
 
     if (!qrToken || typeof qrToken !== 'string') {
       return NextResponse.json({ error: 'Token QR requerido.' }, { status: 400 })

@@ -1,7 +1,16 @@
 import Link from 'next/link'
 import { QrCode, Sparkles, ShieldCheck, Zap, ArrowRight, GlassWater } from 'lucide-react'
+import { ADMIN_ROLES, STAFF_ROLES, getServerSessionUser, hasRoleAccess } from '@/lib/session'
 
-export default function HomePage() {
+export const dynamic = 'force-dynamic'
+
+export default async function HomePage() {
+  const user = await getServerSessionUser()
+  const targetClub = user?.tenantSlug || 'demo-club'
+  const canAccessBarra = hasRoleAccess(user, STAFF_ROLES, targetClub)
+  const canAccessClubAdmin = hasRoleAccess(user, ADMIN_ROLES, targetClub)
+  const canAccessSuperAdmin = hasRoleAccess(user, ['SUPER_ADMIN'])
+
   return (
     <div className="min-h-screen bg-[#0a0a0e] text-white flex flex-col justify-between selection:bg-purple-500 selection:text-white">
       {/* Navbar Superior */}
@@ -17,10 +26,10 @@ export default function HomePage() {
           </div>
 
           <Link
-            href="/demo-club"
+            href={`/${targetClub}`}
             className="flex items-center gap-1.5 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-semibold text-xs px-4 py-2 rounded-xl shadow-md shadow-purple-600/20 active:scale-95 transition-all"
           >
-            <span>Ver Demo</span>
+            <span>Ir a la Barra de Tragos</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </Link>
         </div>
@@ -44,14 +53,14 @@ export default function HomePage() {
           Eliminá las colas en la barra. Tus clientes compran desde su celular con Mercado Pago, descargan su ticket QR en fotos y retiran sus tragos al instante sin depender de la señal celular.
         </p>
 
-        {/* Botón Principal a Demo */}
+        {/* Botón Principal a Barra de Tragos */}
         <div className="flex flex-col sm:flex-row items-center gap-4 w-full max-w-md justify-center">
           <Link
-            href="/demo-club"
+            href={`/${targetClub}`}
             className="w-full sm:w-auto flex-1 bg-gradient-to-r from-purple-600 via-fuchsia-600 to-pink-600 hover:opacity-95 text-white font-bold py-3.5 px-6 rounded-2xl shadow-xl shadow-purple-900/40 flex items-center justify-center gap-2 text-sm active:scale-[0.98] transition-all"
           >
             <QrCode className="w-4 h-4" />
-            <span>Probar Tienda Móvil Demo</span>
+            <span>Abrir Carta de Tragos</span>
           </Link>
         </div>
 
@@ -89,26 +98,44 @@ export default function HomePage() {
         </div>
       </main>
 
-      {/* Footer */}
+      {/* Footer: los links internos (/barra, /admin, /superadmin) SOLO existen si el rol lo permite */}
       <footer className="border-t border-white/10 py-6 px-4 text-center text-xs text-white/40">
         <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <span>BarraOnline SaaS • Plataforma Nocturna de Alta Disponibilidad</span>
           <div className="flex flex-wrap items-center justify-center gap-4 text-xs font-medium">
-            <Link href="/demo-club" className="text-gray-400 hover:text-white transition-colors">
-              Carta Cliente
+            <Link href={`/${targetClub}`} className="text-gray-400 hover:text-white transition-colors">
+              Carta de Tragos
             </Link>
-            <span className="text-gray-700">•</span>
-            <Link href="/demo-club/barra" className="text-purple-400 hover:text-purple-300 transition-colors">
-              Barra Bartender
-            </Link>
-            <span className="text-gray-700">•</span>
-            <Link href="/demo-club/admin" className="text-pink-400 hover:text-pink-300 transition-colors">
-              Club Admin
-            </Link>
-            <span className="text-gray-700">•</span>
-            <Link href="/superadmin" className="text-cyan-400 hover:text-cyan-300 transition-colors">
-              SuperAdmin
-            </Link>
+            {canAccessBarra && (
+              <>
+                <span className="text-gray-700">•</span>
+                <Link
+                  href={`/${targetClub}/barra`}
+                  className="text-purple-400 hover:text-purple-300 transition-colors"
+                >
+                  Barra Bartender
+                </Link>
+              </>
+            )}
+            {canAccessClubAdmin && (
+              <>
+                <span className="text-gray-700">•</span>
+                <Link
+                  href={`/${targetClub}/admin`}
+                  className="text-pink-400 hover:text-pink-300 transition-colors"
+                >
+                  Club Admin
+                </Link>
+              </>
+            )}
+            {canAccessSuperAdmin && (
+              <>
+                <span className="text-gray-700">•</span>
+                <Link href="/superadmin" className="text-cyan-400 hover:text-cyan-300 transition-colors">
+                  SuperAdmin
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </footer>

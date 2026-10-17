@@ -56,6 +56,7 @@ model Tenant {
   users                     User[]
   products                  Product[]
   orders                    Order[]
+  breakages                 BreakageLog[]
 
   @@index([slug])
 }
@@ -98,6 +99,7 @@ model Product {
   tenant              Tenant           @relation(fields: [tenantId], references: [id])
   orderItems          OrderItem[]
   substitutions       RedemptionLog[]  @relation("SubstitutedProduct")
+  breakages           BreakageLog[]
 
   @@index([tenantId, isActive])
   @@index([tenantId, category])
@@ -165,4 +167,22 @@ model RedemptionLog {
   @@index([orderId])
   @@index([orderItemId])
   @@index([bartenderUserId])
+}
+
+model BreakageLog {
+  id              String      @id @default(uuid())
+  tenantId        String
+  productId       String
+  quantity        Int
+  reason          String      // "BOTELLA_ROTA", "DERRAME_CLIENTE", "FALLA_BARTENDER", "MERMA", "OTRO"
+  notes           String?
+  costEstimate    Decimal?    @db.Decimal(10, 2)
+  loggedByUserId  String?
+  createdAt       DateTime    @default(now())
+
+  tenant          Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  product         Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([productId])
 }

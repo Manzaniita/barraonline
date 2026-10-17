@@ -91,11 +91,23 @@ export default function HomePage() {
 
       {/* Footer */}
       <footer className="border-t border-white/10 py-6 px-4 text-center text-xs text-white/40">
-        <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <span>BarraOnline SaaS • Plataforma Nocturna de Alta Disponibilidad</span>
-          <div className="flex items-center gap-4">
-            <Link href="/demo-club" className="hover:text-white transition-colors">
-              Demo Boliche
+          <div className="flex flex-wrap items-center justify-center gap-4 text-xs font-medium">
+            <Link href="/demo-club" className="text-gray-400 hover:text-white transition-colors">
+              Carta Cliente
+            </Link>
+            <span className="text-gray-700">•</span>
+            <Link href="/demo-club/barra" className="text-purple-400 hover:text-purple-300 transition-colors">
+              Barra Bartender
+            </Link>
+            <span className="text-gray-700">•</span>
+            <Link href="/demo-club/admin" className="text-pink-400 hover:text-pink-300 transition-colors">
+              Club Admin
+            </Link>
+            <span className="text-gray-700">•</span>
+            <Link href="/superadmin" className="text-cyan-400 hover:text-cyan-300 transition-colors">
+              SuperAdmin
             </Link>
           </div>
         </div>

@@ -1,6 +1,7 @@
 import React from 'react'
 import Link from 'next/link'
 import { CheckCircle2, Clock, XCircle, ArrowLeft, ShieldCheck, Sparkles, QrCode } from 'lucide-react'
+import { TicketQRCard } from '@/components/store/TicketQRCard'
 
 interface OrderPageProps {
   params: Promise<{
@@ -82,16 +83,15 @@ export default async function OrderPage({ params, searchParams }: OrderPageProps
           </div>
         </div>
 
-        {/* Banner de Siguiente Fase (Fase 4: Ticket QR) */}
+        {/* Ticket QR Oficial de la Orden */}
         {isApproved && (
-          <div className="w-full bg-gradient-to-r from-purple-900/40 via-fuchsia-900/30 to-pink-900/40 border border-purple-500/30 rounded-2xl p-4 mb-6 text-left">
-            <div className="flex items-center gap-2 text-purple-300 font-bold text-xs mb-1.5">
-              <QrCode className="w-4 h-4" />
-              <span>Ticket QR de Canje Parcial</span>
-            </div>
-            <p className="text-xs text-white/70 leading-relaxed">
-              En la <strong>Fase 4</strong> se renderiza aquí el <strong>Ticket Canvas descargable en PNG</strong> con el código QR firmado criptográficamente, listo para guardar en fotos y canjear en la barra sin conexión a internet.
-            </p>
+          <div className="w-full mb-6">
+            <TicketQRCard
+              orderId={orderId}
+              tenantSlug={tenantSlug}
+              nightclubName={tenantSlug.replace(/-/g, ' ')}
+              demo={demo === 'true'}
+            />
           </div>
         )}
 

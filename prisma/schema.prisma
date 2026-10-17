@@ -65,10 +65,13 @@ model User {
   id              String           @id @default(uuid())
   tenantId        String?
   authProviderId  String?          @unique
+  authProvider    String?          @default("credentials") // "email", "phone", "google", "apple"
   email           String?
   phone           String?
   dni             String?
   fullName        String?
+  passwordHash    String?
+  avatarUrl       String?
   role            Role             @default(CUSTOMER)
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
@@ -78,6 +81,7 @@ model User {
   redemptions     RedemptionLog[]
 
   @@index([dni])
+  @@index([email])
   @@index([phone])
   @@index([tenantId, role])
 }

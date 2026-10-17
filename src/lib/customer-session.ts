@@ -2,7 +2,12 @@ export interface CustomerProfile {
   dni: string
   fullName: string
   phone?: string
+  email?: string
   userId?: string
+  role?: 'CUSTOMER' | 'BARTENDER' | 'CLUB_ADMIN' | 'SUPER_ADMIN'
+  tenantSlug?: string
+  authProvider?: string
+  hasPassword?: boolean
 }
 
 const STORAGE_KEY = 'barraonline_customer_session_v1'
@@ -20,11 +25,11 @@ export function isValidDni(dni: string): boolean {
  */
 export function isValidFullName(name: string): boolean {
   const trimmed = name.trim()
-  return trimmed.length >= 4 && trimmed.includes(' ')
+  return trimmed.length >= 3
 }
 
 /**
- * Obtiene el perfil del cliente guardado en el navegador (persistencia de 90 días).
+ * Obtiene el perfil del usuario guardado en el navegador (persistencia de 90 días).
  */
 export function getSavedCustomerProfile(): CustomerProfile | null {
   if (typeof window === 'undefined') return null
@@ -34,7 +39,7 @@ export function getSavedCustomerProfile(): CustomerProfile | null {
     if (!raw) return null
 
     const data = JSON.parse(raw)
-    if (data && data.dni && data.fullName) {
+    if (data && (data.dni || data.email || data.phone || data.userId) && data.fullName) {
       return data as CustomerProfile
     }
     return null
@@ -44,17 +49,22 @@ export function getSavedCustomerProfile(): CustomerProfile | null {
 }
 
 /**
- * Guarda el perfil del cliente en localStorage y en cookies para persistir 90 días.
+ * Guarda el perfil del usuario en localStorage y en cookies para persistir 90 días.
  */
 export function saveCustomerProfile(profile: CustomerProfile): void {
   if (typeof window === 'undefined') return
 
   try {
     const cleanProfile: CustomerProfile = {
-      dni: profile.dni.replace(/\D/g, ''),
-      fullName: profile.fullName.trim(),
+      dni: (profile.dni || '').replace(/\D/g, ''),
+      fullName: (profile.fullName || 'Usuario').trim(),
       phone: profile.phone?.trim() || undefined,
+      email: profile.email?.trim().toLowerCase() || undefined,
       userId: profile.userId,
+      role: profile.role || 'CUSTOMER',
+      tenantSlug: profile.tenantSlug || undefined,
+      authProvider: profile.authProvider || 'credentials',
+      hasPassword: profile.hasPassword,
     }
 
     localStorage.setItem(STORAGE_KEY, JSON.stringify(cleanProfile))
@@ -68,10 +78,11 @@ export function saveCustomerProfile(profile: CustomerProfile): void {
 }
 
 /**
- * Elimina la sesión del cliente en caso de requerir cierre.
+ * Elimina la sesión del usuario en caso de requerir cierre.
  */
 export function clearCustomerProfile(): void {
   if (typeof window === 'undefined') return
   localStorage.removeItem(STORAGE_KEY)
   document.cookie = 'bo_customer=; path=/; max-age=0'
+  document.cookie = 'bo_session=; path=/; max-age=0'
 }

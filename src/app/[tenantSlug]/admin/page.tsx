@@ -30,8 +30,12 @@ import {
   Layers,
   Sparkles,
   Zap,
+  Users,
+  UserCheck,
 } from 'lucide-react'
 import { ClubNightMetrics, ProductPerformance } from '@/lib/admin-service'
+import { RoleGuard } from '@/components/auth/RoleGuard'
+import { UsersRoleManager } from '@/components/admin/UsersRoleManager'
 
 export default function ClubAdminPage() {
   const params = useParams()
@@ -40,7 +44,7 @@ export default function ClubAdminPage() {
   const [metrics, setMetrics] = useState<ClubNightMetrics | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const [activeTab, setActiveTab] = useState<'catalog' | 'breakages' | 'orders'>('catalog')
+  const [activeTab, setActiveTab] = useState<'catalog' | 'breakages' | 'orders' | 'users'>('catalog')
   const [searchQuery, setSearchQuery] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('ALL')
   const [updatingProductId, setUpdatingProductId] = useState<string | null>(null)
@@ -243,82 +247,96 @@ export default function ClubAdminPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#07070b] text-gray-100 flex flex-col font-sans selection:bg-purple-500 selection:text-white">
-      {/* Toast flotante */}
-      {toastMessage && (
-        <div
-          className={`fixed bottom-6 right-6 z-50 px-5 py-3 rounded-xl border shadow-2xl backdrop-blur-md flex items-center gap-3 animate-in fade-in slide-in-from-bottom-4 duration-200 ${
-            toastMessage.type === 'success'
-              ? 'bg-emerald-950/90 border-emerald-500/50 text-emerald-200'
-              : 'bg-rose-950/90 border-rose-500/50 text-rose-200'
-          }`}
-        >
-          {toastMessage.type === 'success' ? (
-            <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-          ) : (
-            <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />
-          )}
-          <span className="text-sm font-medium">{toastMessage.text}</span>
-        </div>
-      )}
-
-      {/* HEADER DE CONTROL */}
-      <header className="sticky top-0 z-40 bg-[#0a0a10]/90 backdrop-blur-md border-b border-purple-900/30 px-4 md:px-8 py-3.5 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <Link
-            href={`/${tenantSlug}`}
-            className="p-2 bg-gray-900/80 hover:bg-gray-800 text-gray-400 hover:text-white rounded-lg transition-colors border border-gray-800"
-            title="Ver Menú Cliente"
+    <RoleGuard
+      allowedRoles={['CLUB_ADMIN', 'SUPER_ADMIN']}
+      sectionTitle="Panel Club Admin"
+      tenantSlug={tenantSlug}
+    >
+      <div className="min-h-screen bg-[#07070b] text-gray-100 flex flex-col font-sans selection:bg-purple-500 selection:text-white">
+        {/* Toast flotante */}
+        {toastMessage && (
+          <div
+            className={`fixed bottom-6 right-6 z-50 px-5 py-3 rounded-xl border shadow-2xl backdrop-blur-md flex items-center gap-3 animate-in fade-in slide-in-from-bottom-4 duration-200 ${
+              toastMessage.type === 'success'
+                ? 'bg-emerald-950/90 border-emerald-500/50 text-emerald-200'
+                : 'bg-rose-950/90 border-rose-500/50 text-rose-200'
+            }`}
           >
-            <ArrowLeft className="w-4 h-4" />
-          </Link>
-          <div>
-            <div className="flex items-center gap-2.5">
-              <span className="text-xl font-black tracking-tight text-white">
-                {metrics?.tenantName || 'Panel Club Admin'}
-              </span>
-              <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold tracking-wide uppercase">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                Noche Activa
-              </div>
-            </div>
-            <p className="text-xs text-gray-400">
-              Gestión de Carta, Stock, Mermas y Cierre Nocturno • Slug:{' '}
-              <span className="text-purple-400 font-mono">/{tenantSlug}</span>
-            </p>
+            {toastMessage.type === 'success' ? (
+              <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+            ) : (
+              <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />
+            )}
+            <span className="text-sm font-medium">{toastMessage.text}</span>
           </div>
-        </div>
+        )}
 
-        <div className="flex items-center gap-2.5">
-          <button
-            onClick={() => fetchMetrics(true)}
-            disabled={refreshing}
-            className="px-3.5 py-2 rounded-lg bg-gray-900/80 hover:bg-gray-800 border border-gray-800 text-gray-300 hover:text-white text-xs font-medium flex items-center gap-2 transition-colors disabled:opacity-50"
-            title="Refrescar métricas ahora"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-purple-400' : ''}`} />
-            <span className="hidden sm:inline">Refrescar</span>
-          </button>
+        {/* HEADER DE CONTROL */}
+        <header className="sticky top-0 z-40 bg-[#0a0a10]/90 backdrop-blur-md border-b border-purple-900/30 px-4 md:px-8 py-3.5 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <Link
+              href={`/${tenantSlug}`}
+              className="p-2 bg-gray-900/80 hover:bg-gray-800 text-gray-400 hover:text-white rounded-lg transition-colors border border-gray-800"
+              title="Ver Menú Cliente"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </Link>
+            <div>
+              <div className="flex items-center gap-2.5">
+                <span className="text-xl font-black tracking-tight text-white">
+                  {metrics?.tenantName || 'Panel Club Admin'}
+                </span>
+                <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold tracking-wide uppercase">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  Noche Activa
+                </div>
+              </div>
+              <p className="text-xs text-gray-400">
+                Gestión de Carta, Stock, Mermas y Roles • Slug:{' '}
+                <span className="text-purple-400 font-mono">/{tenantSlug}</span>
+              </p>
+            </div>
+          </div>
 
-          <a
-            href={`/api/admin/export-csv?tenantSlug=${tenantSlug}`}
-            download
-            className="px-3.5 py-2 rounded-lg bg-purple-900/30 hover:bg-purple-900/50 border border-purple-500/40 text-purple-300 hover:text-purple-200 text-xs font-semibold flex items-center gap-2 transition-all shadow-lg shadow-purple-950/50"
-            title="Descargar Reporte CSV de Auditoría"
-          >
-            <Download className="w-3.5 h-3.5 text-purple-400" />
-            <span className="hidden sm:inline">Cierre Nocturno (.CSV)</span>
-          </a>
+          <div className="flex items-center gap-2.5">
+            <Link
+              href={`/${tenantSlug}/mi-cuenta`}
+              className="px-3 py-2 rounded-lg bg-gray-900/80 hover:bg-gray-800 border border-gray-800 text-purple-300 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition-colors"
+              title="Mi Cuenta"
+            >
+              <UserCheck className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Mi Cuenta</span>
+            </Link>
 
-          <Link
-            href={`/${tenantSlug}/barra`}
-            className="px-4 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white text-xs font-bold flex items-center gap-2 transition-all shadow-lg shadow-purple-600/30"
-          >
-            <Wine className="w-3.5 h-3.5" />
-            <span>Abrir Barra</span>
-          </Link>
-        </div>
-      </header>
+            <button
+              onClick={() => fetchMetrics(true)}
+              disabled={refreshing}
+              className="px-3.5 py-2 rounded-lg bg-gray-900/80 hover:bg-gray-800 border border-gray-800 text-gray-300 hover:text-white text-xs font-medium flex items-center gap-2 transition-colors disabled:opacity-50"
+              title="Refrescar métricas ahora"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-purple-400' : ''}`} />
+              <span className="hidden sm:inline">Refrescar</span>
+            </button>
+
+            <a
+              href={`/api/admin/export-csv?tenantSlug=${tenantSlug}`}
+              download
+              className="px-3.5 py-2 rounded-lg bg-purple-900/30 hover:bg-purple-900/50 border border-purple-500/40 text-purple-300 hover:text-purple-200 text-xs font-semibold flex items-center gap-2 transition-all shadow-lg shadow-purple-950/50"
+              title="Descargar Reporte CSV de Auditoría"
+            >
+              <Download className="w-3.5 h-3.5 text-purple-400" />
+              <span className="hidden sm:inline">Cierre Nocturno (.CSV)</span>
+            </a>
+
+            <Link
+              href={`/${tenantSlug}/barra`}
+              className="px-4 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white text-xs font-bold flex items-center gap-2 transition-all shadow-lg shadow-purple-600/30"
+            >
+              <Wine className="w-3.5 h-3.5" />
+              <span>Abrir Barra</span>
+            </Link>
+          </div>
+        </header>
 
       {/* METRICAS KPI HERO */}
       <section className="px-4 md:px-8 py-6 max-w-7xl mx-auto w-full">
@@ -458,6 +476,18 @@ export default function ClubAdminPage() {
             >
               <Activity className="w-4 h-4" />
               <span>Órdenes Recientes & Categorías</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('users')}
+              className={`px-4 py-2.5 rounded-xl font-bold text-xs tracking-wide transition-all flex items-center gap-2 ${
+                activeTab === 'users'
+                  ? 'bg-pink-600/20 text-pink-300 border border-pink-500/50 shadow-lg shadow-pink-950/40'
+                  : 'text-gray-400 hover:text-white hover:bg-gray-900/60'
+              }`}
+            >
+              <Users className="w-4 h-4" />
+              <span>Equipo & Roles (Usuarios)</span>
             </button>
           </div>
         </div>
@@ -843,6 +873,11 @@ export default function ClubAdminPage() {
             </div>
           </div>
         )}
+
+        {/* CONTENIDO TAB 4: EQUIPO & ROLES (USUARIOS) */}
+        {activeTab === 'users' && (
+          <UsersRoleManager tenantSlug={tenantSlug} allowSuperAdminRole={true} />
+        )}
       </main>
 
       {/* MODAL: EDITAR PRECIO Y STOCK DE PRODUCTO */}
@@ -1030,6 +1065,7 @@ export default function ClubAdminPage() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </RoleGuard>
   )
 }

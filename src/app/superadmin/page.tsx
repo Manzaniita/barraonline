@@ -20,7 +20,10 @@ import {
   Sparkles,
   Sliders,
   Settings,
+  UserCheck,
 } from 'lucide-react'
+import { RoleGuard } from '@/components/auth/RoleGuard'
+import { UsersRoleManager } from '@/components/admin/UsersRoleManager'
 
 interface TenantSummary {
   id: string
@@ -44,6 +47,7 @@ export default function SuperAdminPage() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [activeSection, setActiveSection] = useState<'tenants' | 'users'>('tenants')
 
   // Modal para crear boliche
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -181,65 +185,77 @@ export default function SuperAdminPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#07070a] text-gray-100 flex flex-col font-sans selection:bg-purple-500 selection:text-white">
-      {/* Toast */}
-      {toast && (
-        <div
-          className={`fixed bottom-6 right-6 z-50 px-5 py-3 rounded-xl border shadow-2xl backdrop-blur-md flex items-center gap-3 animate-in fade-in slide-in-from-bottom-4 ${
-            toast.type === 'success'
-              ? 'bg-emerald-950/90 border-emerald-500/50 text-emerald-200'
-              : 'bg-rose-950/90 border-rose-500/50 text-rose-200'
-          }`}
-        >
-          {toast.type === 'success' ? (
-            <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-          ) : (
-            <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />
-          )}
-          <span className="text-sm font-medium">{toast.text}</span>
-        </div>
-      )}
-
-      {/* HEADER SUPERADMIN */}
-      <header className="sticky top-0 z-40 bg-[#0a0a10]/90 backdrop-blur-md border-b border-purple-900/30 px-4 md:px-8 py-4 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-600 to-pink-600 flex items-center justify-center text-white shadow-lg shadow-purple-600/30">
-            <ShieldCheck className="w-6 h-6" />
+    <RoleGuard
+      allowedRoles={['SUPER_ADMIN']}
+      sectionTitle="Panel SuperAdmin Plataforma"
+    >
+      <div className="min-h-screen bg-[#07070a] text-gray-100 flex flex-col font-sans selection:bg-purple-500 selection:text-white">
+        {/* Toast */}
+        {toast && (
+          <div
+            className={`fixed bottom-6 right-6 z-50 px-5 py-3 rounded-xl border shadow-2xl backdrop-blur-md flex items-center gap-3 animate-in fade-in slide-in-from-bottom-4 ${
+              toast.type === 'success'
+                ? 'bg-emerald-950/90 border-emerald-500/50 text-emerald-200'
+                : 'bg-rose-950/90 border-rose-500/50 text-rose-200'
+            }`}
+          >
+            {toast.type === 'success' ? (
+              <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+            ) : (
+              <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />
+            )}
+            <span className="text-sm font-medium">{toast.text}</span>
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xl font-black tracking-tight text-white">
-                BarraOnline Platform
-              </span>
-              <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/40 text-[10px] font-bold uppercase tracking-wider">
-                SuperAdmin
-              </span>
+        )}
+
+        {/* HEADER SUPERADMIN */}
+        <header className="sticky top-0 z-40 bg-[#0a0a10]/90 backdrop-blur-md border-b border-purple-900/30 px-4 md:px-8 py-4 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-600 to-pink-600 flex items-center justify-center text-white shadow-lg shadow-purple-600/30">
+              <ShieldCheck className="w-6 h-6" />
             </div>
-            <p className="text-xs text-gray-400">
-              Control centralizado multi-tenant y liquidación de comisiones SaaS
-            </p>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xl font-black tracking-tight text-white">
+                  BarraOnline Platform
+                </span>
+                <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/40 text-[10px] font-bold uppercase tracking-wider">
+                  SuperAdmin
+                </span>
+              </div>
+              <p className="text-xs text-gray-400">
+                Control centralizado multi-tenant, usuarios y liquidación de comisiones SaaS
+              </p>
+            </div>
           </div>
-        </div>
 
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => fetchTenants(true)}
-            disabled={refreshing}
-            className="px-3 py-2 rounded-lg bg-gray-900 hover:bg-gray-800 border border-gray-800 text-gray-300 text-xs font-medium flex items-center gap-2"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-purple-400' : ''}`} />
-            <span>Refrescar</span>
-          </button>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/demo-club/mi-cuenta"
+              className="px-3 py-2 rounded-lg bg-gray-900 hover:bg-gray-800 border border-gray-800 text-purple-300 text-xs font-semibold flex items-center gap-1.5"
+            >
+              <UserCheck className="w-3.5 h-3.5" />
+              <span>Mi Cuenta</span>
+            </Link>
 
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="px-4 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-purple-600/30 transition-all"
-          >
-            <PlusCircle className="w-4 h-4" />
-            <span>Alta Nuevo Boliche</span>
-          </button>
-        </div>
-      </header>
+            <button
+              onClick={() => fetchTenants(true)}
+              disabled={refreshing}
+              className="px-3 py-2 rounded-lg bg-gray-900 hover:bg-gray-800 border border-gray-800 text-gray-300 text-xs font-medium flex items-center gap-2"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-purple-400' : ''}`} />
+              <span>Refrescar</span>
+            </button>
+
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="px-4 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-purple-600/30 transition-all"
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>Alta Nuevo Boliche</span>
+            </button>
+          </div>
+        </header>
 
       {/* HERO KPIS DE PLATAFORMA */}
       <section className="px-4 md:px-8 py-6 max-w-7xl mx-auto w-full">
@@ -302,27 +318,57 @@ export default function SuperAdminPage() {
         </div>
       </section>
 
-      {/* LISTA Y GESTIÓN DE BOLICHES */}
+      {/* LISTA Y GESTIÓN DE BOLICHES O USUARIOS */}
       <main className="px-4 md:px-8 pb-16 max-w-7xl mx-auto w-full flex-1">
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 mb-6">
-          <div className="relative flex-1 max-w-md">
-            <Search className="w-4 h-4 text-gray-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="Buscar por nombre o slug..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-gray-900/80 border border-gray-800 rounded-xl pl-10 pr-4 py-2 text-sm text-white focus:outline-none focus:border-purple-500"
-            />
-          </div>
+        <div className="flex items-center gap-2 border-b border-gray-800 pb-4 mb-6">
+          <button
+            onClick={() => setActiveSection('tenants')}
+            className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all ${
+              activeSection === 'tenants'
+                ? 'bg-purple-600/20 text-purple-300 border border-purple-500/50'
+                : 'text-gray-400 hover:text-white hover:bg-gray-900'
+            }`}
+          >
+            <Building2 className="w-4 h-4" />
+            <span>Boliches Adheridos ({tenants.length})</span>
+          </button>
 
-          <span className="text-xs text-gray-400 font-mono self-center">
-            {filteredTenants.length} boliche(s) encontrado(s)
-          </span>
+          <button
+            onClick={() => setActiveSection('users')}
+            className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all ${
+              activeSection === 'users'
+                ? 'bg-pink-600/20 text-pink-300 border border-pink-500/50'
+                : 'text-gray-400 hover:text-white hover:bg-gray-900'
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            <span>Usuarios & Roles Globales</span>
+          </button>
         </div>
 
-        {/* Tabla de Tenants */}
-        <div className="bg-gray-900/60 border border-gray-800 rounded-2xl overflow-hidden shadow-xl">
+        {activeSection === 'users' ? (
+          <UsersRoleManager allowSuperAdminRole={true} />
+        ) : (
+          <>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 mb-6">
+              <div className="relative flex-1 max-w-md">
+                <Search className="w-4 h-4 text-gray-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Buscar por nombre o slug..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full bg-gray-900/80 border border-gray-800 rounded-xl pl-10 pr-4 py-2 text-sm text-white focus:outline-none focus:border-purple-500"
+                />
+              </div>
+
+              <span className="text-xs text-gray-400 font-mono self-center">
+                {filteredTenants.length} boliche(s) encontrado(s)
+              </span>
+            </div>
+
+            {/* Tabla de Tenants */}
+            <div className="bg-gray-900/60 border border-gray-800 rounded-2xl overflow-hidden shadow-xl">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
@@ -434,6 +480,8 @@ export default function SuperAdminPage() {
             </table>
           </div>
         </div>
+          </>
+        )}
       </main>
 
       {/* MODAL: PROVISIONAR NUEVO BOLICHE */}
@@ -583,6 +631,7 @@ export default function SuperAdminPage() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </RoleGuard>
   )
 }

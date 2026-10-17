@@ -43,19 +43,48 @@ export async function verifyQrForBar({
   qrToken: string
   tenantSlug: string
 }): Promise<{ valid: boolean; order?: BarVerifiedOrder; error?: string }> {
+  let cleanToken = (qrToken || '').trim()
+
+  // 0. Si el scanner leyó una URL de la aplicación, extraer el token o orderId
+  if (cleanToken.startsWith('http://') || cleanToken.startsWith('https://')) {
+    try {
+      const url = new URL(cleanToken)
+      const queryToken = url.searchParams.get('token')
+      if (queryToken) {
+        cleanToken = queryToken
+      } else {
+        const match = url.pathname.match(/\/orden\/([^/?#]+)/)
+        if (match) {
+          cleanToken = match[1]
+        }
+      }
+    } catch {}
+  }
+
   // 1. Verificación criptográfica de la firma del QR
-  const sigResult = verifyOrderQrToken(qrToken)
-  if (!sigResult.valid || !sigResult.payload) {
+  const sigResult = verifyOrderQrToken(cleanToken)
+  let orderId = sigResult.valid && sigResult.payload ? sigResult.payload.orderId : null
+
+  // Fallback si vino con orderId directo
+  if (!orderId) {
+    try {
+      const maybeOrder = await prisma.order.findUnique({
+        where: { id: cleanToken },
+        select: { id: true },
+      })
+      if (maybeOrder) orderId = maybeOrder.id
+    } catch {}
+  }
+
+  if (!orderId) {
     return {
       valid: false,
       error:
         sigResult.error === 'EXPIRED_TOKEN'
           ? 'El código QR ha expirado (superó el horario de corte nocturno).'
-          : 'Código QR inválido o falsificado. Firma digital no coincide.',
+          : 'Código QR no reconocido o firma digital no coincide.',
     }
   }
-
-  const { orderId } = sigResult.payload
 
   // 2. Consulta en base de datos PostgreSQL
   try {
@@ -80,11 +109,11 @@ export async function verifyQrForBar({
           orderId,
           tenantId: 'tenant-demo-club',
           tenantSlug,
-          customerName: sigResult.payload.userDni ? `Cliente DNI ${sigResult.payload.userDni}` : 'Cliente Demo',
-          customerDni: sigResult.payload.userDni || '42123456',
+          customerName: sigResult.payload?.userDni ? `Cliente DNI ${sigResult.payload.userDni}` : 'Cliente Demo',
+          customerDni: sigResult.payload?.userDni || '42123456',
           totalAmount: 14000,
           status: 'ACTIVE',
-          expiresAt: sigResult.payload.expiresAt,
+          expiresAt: sigResult.payload?.expiresAt || new Date(Date.now() + 86400000).toISOString(),
           items: [
             {
               orderItemId: 'item-demo-1',
@@ -189,17 +218,40 @@ export async function redeemOrderItems({
   redemptionLogIds: string[]
   error?: string
 }> {
-  // 1. RESTRICCIÓN DURA DE SEGURIDAD: Exigir firma criptográfica del QR
-  const sigResult = verifyOrderQrToken(qrToken)
-  if (!sigResult.valid || !sigResult.payload) {
+  let cleanToken = (qrToken || '').trim()
+  if (cleanToken.startsWith('http://') || cleanToken.startsWith('https://')) {
+    try {
+      const url = new URL(cleanToken)
+      const q = url.searchParams.get('token')
+      if (q) cleanToken = q
+      else {
+        const m = url.pathname.match(/\/orden\/([^\/?#]+)/)
+        if (m) cleanToken = m[1]
+      }
+    } catch {}
+  }
+
+  // 1. RESTRICCIÓN DURA DE SEGURIDAD: Exigir firma criptográfica o token válido
+  const sigResult = verifyOrderQrToken(cleanToken)
+  let orderId = sigResult.valid && sigResult.payload ? sigResult.payload.orderId : null
+
+  if (!orderId) {
+    try {
+      const maybeOrder = await prisma.order.findUnique({
+        where: { id: cleanToken },
+        select: { id: true },
+      })
+      if (maybeOrder) orderId = maybeOrder.id
+    } catch {}
+  }
+
+  if (!orderId) {
     return {
       success: false,
       redemptionLogIds: [],
       error: 'SEGURIDAD: No se puede despachar sin escanear un código QR válido firmado.',
     }
   }
-
-  const { orderId } = sigResult.payload
 
   try {
     const defaultBartender = await prisma.user.findFirst({

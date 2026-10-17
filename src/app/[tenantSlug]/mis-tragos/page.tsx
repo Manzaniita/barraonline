@@ -111,7 +111,7 @@ export default function MisTragosPage() {
                 </div>
 
                 {/* QR de Alto Contraste */}
-                <div className="text-center my-3">
+                <div className="text-center my-4">
                   <div
                     onClick={() =>
                       qrUrl &&
@@ -121,21 +121,21 @@ export default function MisTragosPage() {
                         name: ticket.customerName,
                       })
                     }
-                    className="bg-white p-3.5 rounded-2xl inline-block shadow-xl cursor-pointer hover:scale-[1.02] active:scale-95 transition-all"
+                    className="bg-white p-4 rounded-3xl inline-block shadow-2xl cursor-pointer hover:scale-[1.02] active:scale-95 transition-all"
                   >
                     {qrUrl ? (
                       <img
                         src={qrUrl}
                         alt="Código QR de Canje"
-                        className="w-44 h-44 mx-auto object-contain"
+                        className="w-60 h-60 mx-auto object-contain"
                       />
                     ) : (
-                      <div className="w-44 h-44 flex items-center justify-center text-black">
+                      <div className="w-60 h-60 flex items-center justify-center text-black">
                         <QrCode className="w-12 h-12 animate-spin" />
                       </div>
                     )}
-                    <span className="text-[10px] text-black/60 font-mono font-bold block pt-1">
-                      TOCÁ PARA EXPANDIR
+                    <span className="text-[11px] text-black/70 font-mono font-extrabold block pt-2">
+                      TOCÁ PARA PANTALLA COMPLETA
                     </span>
                   </div>
                 </div>

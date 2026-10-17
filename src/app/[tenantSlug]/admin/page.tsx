@@ -487,7 +487,7 @@ export default function ClubAdminPage() {
               }`}
             >
               <Users className="w-4 h-4" />
-              <span>Equipo & Roles (Usuarios)</span>
+              <span>Empleados & Barra (CRUD)</span>
             </button>
           </div>
         </div>
@@ -876,7 +876,7 @@ export default function ClubAdminPage() {
 
         {/* CONTENIDO TAB 4: EQUIPO & ROLES (USUARIOS) */}
         {activeTab === 'users' && (
-          <UsersRoleManager tenantSlug={tenantSlug} allowSuperAdminRole={false} />
+          <UsersRoleManager tenantSlug={tenantSlug} allowSuperAdminRole={false} isSuperAdmin={false} />
         )}
       </main>
 

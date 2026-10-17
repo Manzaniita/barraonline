@@ -97,7 +97,8 @@ export function CartDrawer({ tenantSlug, nightclubName }: CartDrawerProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+    <>
+      <div className="fixed inset-0 z-50 flex justify-end bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-[#0e0e13] border-l border-white/10 w-full max-w-md h-full flex flex-col justify-between text-white shadow-2xl animate-in slide-in-from-right duration-300">
         {/* Cabecera del Carrito */}
         <div className="p-4 border-b border-white/10 flex items-center justify-between">
@@ -269,13 +270,14 @@ export function CartDrawer({ tenantSlug, nightclubName }: CartDrawerProps) {
           </div>
         )}
       </div>
-
-      <CustomerAuthModal
-        isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
-        onSuccess={(profile) => setCustomer(profile)}
-        requiredNotice="Para generar el código QR de canje en barra, necesitamos tu DNI una sola vez."
-      />
     </div>
-  )
+
+    <CustomerAuthModal
+      isOpen={isAuthModalOpen}
+      onClose={() => setIsAuthModalOpen(false)}
+      onSuccess={(profile) => setCustomer(profile)}
+      requiredNotice="Para generar el código QR de canje en barra, necesitamos tu DNI una sola vez."
+    />
+  </>
+)
 }

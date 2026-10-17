@@ -552,3 +552,161 @@ export async function updateUserRoleFromAdmin({
 
   return toAuthUser(updated)
 }
+
+/**
+ * Actualiza completamente una cuenta de usuario desde el panel de administración.
+ */
+export async function updateUserFromAdmin({
+  userId,
+  fullName,
+  email,
+  phone,
+  dni,
+  role,
+  tenantId,
+  tenantSlug,
+  newPassword,
+}: {
+  userId: string
+  fullName?: string
+  email?: string | null
+  phone?: string | null
+  dni?: string | null
+  role?: Role
+  tenantId?: string | null
+  tenantSlug?: string | null
+  newPassword?: string
+}): Promise<AuthUser> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: { tenant: true },
+  })
+
+  if (!user) {
+    throw new Error('Usuario no encontrado.')
+  }
+
+  const updateData: any = {}
+
+  if (fullName !== undefined && fullName.trim()) {
+    updateData.fullName = fullName.trim()
+  }
+
+  if (email !== undefined) {
+    const cleanEmail = email?.trim().toLowerCase() || null
+    if (cleanEmail && cleanEmail !== user.email) {
+      const taken = await prisma.user.findFirst({
+        where: { email: cleanEmail, id: { not: userId } },
+      })
+      if (taken) throw new Error('Ese correo ya está en uso por otra cuenta.')
+    }
+    updateData.email = cleanEmail
+  }
+
+  if (phone !== undefined) {
+    updateData.phone = phone?.replace(/\D/g, '') || null
+  }
+
+  if (dni !== undefined) {
+    const cleanDni = dni?.replace(/\D/g, '') || null
+    if (cleanDni && cleanDni !== user.dni) {
+      const taken = await prisma.user.findFirst({
+        where: { dni: cleanDni, id: { not: userId } },
+      })
+      if (taken) throw new Error('Ese DNI ya está en uso por otra cuenta.')
+    }
+    updateData.dni = cleanDni
+  }
+
+  if (role !== undefined) {
+    updateData.role = role
+  }
+
+  if (tenantId !== undefined) {
+    updateData.tenantId = tenantId
+  } else if (tenantSlug !== undefined) {
+    if (tenantSlug) {
+      const t = await prisma.tenant.findUnique({ where: { slug: tenantSlug } })
+      updateData.tenantId = t ? t.id : null
+    } else {
+      updateData.tenantId = null
+    }
+  }
+
+  if (newPassword && newPassword.trim().length > 0) {
+    if (newPassword.length < 4) {
+      throw new Error('La contraseña debe tener al menos 4 caracteres.')
+    }
+    updateData.passwordHash = hashPassword(newPassword.trim())
+  }
+
+  const updated = await prisma.user.update({
+    where: { id: userId },
+    data: updateData,
+    include: { tenant: true },
+  })
+
+  return toAuthUser(updated)
+}
+
+/**
+ * Elimina una cuenta de usuario y maneja sus dependencias en cascada segura.
+ */
+export async function deleteUserFromAdmin({
+  userId,
+  requestingUserId,
+}: {
+  userId: string
+  requestingUserId: string
+}) {
+  if (userId === requestingUserId) {
+    throw new Error('No podés eliminar tu propia cuenta mientras estás conectado.')
+  }
+
+  const target = await prisma.user.findUnique({
+    where: { id: userId },
+  })
+
+  if (!target) {
+    throw new Error('Usuario no encontrado.')
+  }
+
+  if (target.role === 'SUPER_ADMIN') {
+    const superAdminCount = await prisma.user.count({
+      where: { role: 'SUPER_ADMIN' },
+    })
+    if (superAdminCount <= 1) {
+      throw new Error('No se puede eliminar el único SuperAdmin de la plataforma.')
+    }
+  }
+
+  return await prisma.$transaction(async (tx) => {
+    // 1. Desvincular o eliminar logs de redención hechos por este bartender
+    await tx.redemptionLog.deleteMany({
+      where: { bartenderUserId: userId },
+    })
+
+    // 2. Para las órdenes del usuario, eliminar dependencias
+    const userOrders = await tx.order.findMany({
+      where: { userId },
+      select: { id: true },
+    })
+    const orderIds = userOrders.map((o) => o.id)
+    if (orderIds.length > 0) {
+      await tx.redemptionLog.deleteMany({
+        where: { orderId: { in: orderIds } },
+      })
+      await tx.orderItem.deleteMany({
+        where: { orderId: { in: orderIds } },
+      })
+      await tx.order.deleteMany({
+        where: { id: { in: orderIds } },
+      })
+    }
+
+    // 3. Eliminar el usuario
+    return await tx.user.delete({
+      where: { id: userId },
+    })
+  })
+}

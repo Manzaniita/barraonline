@@ -16,10 +16,9 @@ export interface AuthUser {
   hasPassword: boolean
 }
 
-const AUTH_SECRET =
-  process.env.QR_SIGNING_SECRET ||
-  process.env.NEXTAUTH_SECRET ||
-  'barra-online-fallback-production-hmac-secret-key-2026-v1'
+import { env } from '@/config/env'
+
+const AUTH_SECRET = env.AUTH_SECRET
 
 /**
  * Hashea una contraseña usando scrypt nativo de Node.js (sin dependencias externas pesadas).

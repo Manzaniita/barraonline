@@ -56,7 +56,32 @@ export interface ClubNightMetrics {
 }
 
 /**
+ * Optimización de métricas de alto rendimiento:
+ * Agregación directa en PostgreSQL sin cargar objetos masivos en RAM.
+ */
+export async function getDashboardMetrics(tenantId: string) {
+  const [orderAggregate, totalItemsSold] = await Promise.all([
+    prisma.order.aggregate({
+      where: { tenantId, status: { in: ['ACTIVE', 'DEPLETED'] } },
+      _sum: { totalAmount: true },
+      _count: { id: true },
+    }),
+    prisma.orderItem.aggregate({
+      where: { order: { tenantId, status: { in: ['ACTIVE', 'DEPLETED'] } } },
+      _sum: { quantityPurchased: true },
+    }),
+  ])
+
+  return {
+    revenue: Number(orderAggregate._sum.totalAmount) || 0,
+    totalOrders: orderAggregate._count.id || 0,
+    totalDrinksSold: totalItemsSold._sum.quantityPurchased || 0,
+  }
+}
+
+/**
  * Obtiene métricas en tiempo real de la noche para el Club Admin.
+ * Refactorizado para usar agregaciones en PostgreSQL y paginación de órdenes recientes.
  */
 export async function getClubDashboardMetrics(tenantSlug: string): Promise<ClubNightMetrics | null> {
   try {
@@ -66,37 +91,68 @@ export async function getClubDashboardMetrics(tenantSlug: string): Promise<ClubN
         products: {
           orderBy: [{ category: 'asc' }, { name: 'asc' }],
         },
-        orders: {
-          orderBy: { createdAt: 'desc' },
-          include: {
-            user: true,
-            items: {
-              include: { product: true },
-            },
-          },
-        },
-        breakages: {
-          orderBy: { createdAt: 'desc' },
-          include: { product: true },
-        },
       },
     })
 
     if (!tenant) return null
 
-    let totalRevenue = 0
-    let totalDrinksPurchased = 0
-    let totalDrinksRedeemed = 0
-    let activeOrdersCount = 0
-    let depletedOrdersCount = 0
+    // 1. Ejecutar agregaciones directas en base de datos en paralelo
+    const [
+      revenueAggregate,
+      totalOrdersCount,
+      activeOrdersCount,
+      depletedOrdersCount,
+      itemGroupStats,
+      recentOrdersRaw,
+      breakagesRaw,
+    ] = await Promise.all([
+      prisma.order.aggregate({
+        where: { tenantId: tenant.id, status: { in: ['ACTIVE', 'DEPLETED'] } },
+        _sum: { totalAmount: true },
+      }),
+      prisma.order.count({
+        where: { tenantId: tenant.id },
+      }),
+      prisma.order.count({
+        where: { tenantId: tenant.id, status: 'ACTIVE' },
+      }),
+      prisma.order.count({
+        where: { tenantId: tenant.id, status: 'DEPLETED' },
+      }),
+      prisma.orderItem.groupBy({
+        by: ['productId'],
+        where: {
+          order: { tenantId: tenant.id, status: { in: ['ACTIVE', 'DEPLETED'] } },
+        },
+        _sum: {
+          quantityPurchased: true,
+          quantityRedeemed: true,
+        },
+      }),
+      prisma.order.findMany({
+        where: { tenantId: tenant.id },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+        include: {
+          user: { select: { fullName: true, dni: true } },
+          items: { select: { quantityPurchased: true } },
+        },
+      }),
+      prisma.breakageLog.findMany({
+        where: { tenantId: tenant.id },
+        orderBy: { createdAt: 'desc' },
+        include: { product: true },
+      }),
+    ])
 
-    // Mapa de rendimiento por producto
+    const totalRevenue = Number(revenueAggregate._sum.totalAmount) || 0
+
+    // 2. Mapear agregaciones de ítems por producto
     const productStatsMap = new Map<
       string,
       { purchased: number; redeemed: number; revenue: number }
     >()
 
-    // Mapa de categorías
     const categoryStatsMap = new Map<
       string,
       { purchased: number; redeemed: number; revenue: number }
@@ -109,42 +165,36 @@ export async function getClubDashboardMetrics(tenantSlug: string): Promise<ClubN
       }
     }
 
-    for (const order of tenant.orders) {
-      if (order.status === 'ACTIVE' || order.status === 'DEPLETED') {
-        totalRevenue += Number(order.totalAmount)
+    let totalDrinksPurchased = 0
+    let totalDrinksRedeemed = 0
 
-        if (order.status === 'ACTIVE') activeOrdersCount++
-        if (order.status === 'DEPLETED') depletedOrdersCount++
+    const productPriceMap = new Map(tenant.products.map((p) => [p.id, { price: Number(p.price), category: p.category }]))
 
-        for (const item of order.items) {
-          totalDrinksPurchased += item.quantityPurchased
-          totalDrinksRedeemed += item.quantityRedeemed
+    for (const group of itemGroupStats) {
+      const pInfo = productPriceMap.get(group.productId)
+      const purchased = group._sum.quantityPurchased || 0
+      const redeemed = group._sum.quantityRedeemed || 0
+      const unitPrice = pInfo ? pInfo.price : 0
+      const rev = purchased * unitPrice
 
-          const itemRev = Number(item.unitPrice) * item.quantityPurchased
+      totalDrinksPurchased += purchased
+      totalDrinksRedeemed += redeemed
 
-          // Estadísticas de producto
-          const pStat = productStatsMap.get(item.productId)
-          if (pStat) {
-            pStat.purchased += item.quantityPurchased
-            pStat.redeemed += item.quantityRedeemed
-            pStat.revenue += itemRev
-          }
+      const pStat = productStatsMap.get(group.productId)
+      if (pStat) {
+        pStat.purchased = purchased
+        pStat.redeemed = redeemed
+        pStat.revenue = rev
+      }
 
-          // Estadísticas de categoría
-          const cat = item.product?.category || 'Tragos'
-          const cStat = categoryStatsMap.get(cat)
-          if (cStat) {
-            cStat.purchased += item.quantityPurchased
-            cStat.redeemed += item.quantityRedeemed
-            cStat.revenue += itemRev
-          } else {
-            categoryStatsMap.set(cat, {
-              purchased: item.quantityPurchased,
-              redeemed: item.quantityRedeemed,
-              revenue: itemRev,
-            })
-          }
-        }
+      const cat = pInfo ? pInfo.category : 'Tragos'
+      const cStat = categoryStatsMap.get(cat)
+      if (cStat) {
+        cStat.purchased += purchased
+        cStat.redeemed += redeemed
+        cStat.revenue += rev
+      } else {
+        categoryStatsMap.set(cat, { purchased, redeemed, revenue: rev })
       }
     }
 
@@ -181,9 +231,9 @@ export async function getClubDashboardMetrics(tenantSlug: string): Promise<ClubN
 
     let breakageCount = 0
     let breakageCost = 0
-    const breakages = tenant.breakages.map((b) => {
+    const breakages = breakagesRaw.map((b) => {
       breakageCount += b.quantity
-      const cost = Number(b.costEstimate || Number(b.product?.price || 0) * 0.4) // Costo estimado de reposición
+      const cost = Number(b.costEstimate || Number(b.product?.price || 0) * 0.4)
       breakageCost += cost * b.quantity
       return {
         id: b.id,
@@ -196,7 +246,7 @@ export async function getClubDashboardMetrics(tenantSlug: string): Promise<ClubN
       }
     })
 
-    const recentOrders = tenant.orders.slice(0, 10).map((o) => ({
+    const recentOrders = recentOrdersRaw.map((o) => ({
       id: o.id,
       customerName: o.user?.fullName || 'Cliente',
       customerDni: o.user?.dni || '',
@@ -210,7 +260,7 @@ export async function getClubDashboardMetrics(tenantSlug: string): Promise<ClubN
       tenantName: tenant.name,
       tenantSlug: tenant.slug,
       totalRevenue,
-      totalOrdersCount: tenant.orders.length,
+      totalOrdersCount,
       activeOrdersCount,
       depletedOrdersCount,
       totalDrinksPurchased,

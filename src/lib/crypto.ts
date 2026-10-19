@@ -1,4 +1,5 @@
 import crypto from 'crypto'
+import { env } from '@/config/env'
 
 export interface QrTokenPayload {
   orderId: string
@@ -16,14 +17,9 @@ export interface VerificationResult {
 
 /**
  * Obtiene el secreto de firma criptográfica desde las variables de entorno.
- * Lanza un error o utiliza fallback seguro en entorno de desarrollo.
  */
 function getSigningSecret(): string {
-  const secret = process.env.QR_SIGNING_SECRET
-  if (!secret) {
-    return 'barra-online-master-secret-key-prod-987456123-supabase-hmac-sha256'
-  }
-  return secret
+  return env.QR_SIGNING_SECRET
 }
 
 /**

@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { env } from '@/config/env'
 import { prisma } from '@/lib/prisma'
 import { generateOrderQrToken } from '@/lib/crypto'
 import { calculateExpirationDate, calculatePromoDeadline } from '@/lib/mercadopago'
 
 export async function POST(req: NextRequest) {
+  if (!env.ALLOW_PAYMENT_SIMULATION) {
+    return NextResponse.json(
+      { error: 'Simulación de pagos deshabilitada en este entorno.' },
+      { status: 403 }
+    )
+  }
+
   try {
     const body = await req.json()
     const { orderId, tenantSlug = 'demo-club', userDni, customerName, items, totalAmount } = body
@@ -84,9 +92,17 @@ export async function POST(req: NextRequest) {
           const fernet = prods.find((p) => p.name.includes('Fernet')) || prods[0]
           const agua = prods.find((p) => p.name.includes('Agua')) || prods[1] || prods[0]
 
+          interface SimItemInput {
+            productId?: string
+            name?: string
+            unitPrice?: number
+            quantity?: number
+            redeemDeadlineTime?: string
+          }
+
           const itemsToCreate =
             items && Array.isArray(items) && items.length > 0
-              ? items.map((it: any) => {
+              ? items.map((it: SimItemInput) => {
                   const matched =
                     prods.find((p) => p.id === it.productId) ||
                     prods.find((p) => p.name.toLowerCase() === (it.name || '').toLowerCase()) ||
@@ -122,7 +138,7 @@ export async function POST(req: NextRequest) {
 
           const finalTotal =
             totalAmount ||
-            itemsToCreate.reduce((sum: number, it: any) => sum + it.unitPrice * it.quantityPurchased, 0)
+            itemsToCreate.reduce((sum: number, it: { unitPrice: number; quantityPurchased: number }) => sum + it.unitPrice * it.quantityPurchased, 0)
 
           dbOrder = await prisma.order.create({
             data: {

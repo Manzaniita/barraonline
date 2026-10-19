@@ -1,4 +1,5 @@
 import QRCode from 'qrcode'
+import { APP_CONFIG } from '@/config/constants'
 
 export interface TicketItem {
   name: string
@@ -26,6 +27,19 @@ export interface SavedTicket extends TicketData {
 }
 
 const ALPHANUMERIC_QR_REGEX = /^[0-9A-Z $%*+\-./:]+$/
+
+export function calculateCanvasMetrics(itemsCount: number) {
+  const { width, baseHeight, rowHeight, qrSize } = APP_CONFIG.ticket
+  const calculatedHeight = baseHeight + itemsCount * rowHeight
+  const finalHeight = Math.max(1260, calculatedHeight)
+
+  return {
+    width,
+    height: finalHeight,
+    qrY: finalHeight - (qrSize + 140),
+    footerY: finalHeight - 60,
+  }
+}
 
 /**
  * Genera el código QR de alto contraste en formato DataURL optimizado estilo Mercado Pago Posnet.
@@ -55,7 +69,7 @@ export async function generateQrDataUrl(qrToken: string): Promise<string> {
 }
 
 /**
- * Renderiza el ticket completo de consumo en un HTML5 Canvas de alta resolución (750x1260)
+ * Renderiza el ticket completo de consumo en un HTML5 Canvas de alta resolución con altura dinámica
  * y retorna la imagen en base64 PNG lista para descargar a la galería de fotos.
  */
 export async function renderTicketToCanvas(ticket: TicketData): Promise<string> {
@@ -67,9 +81,10 @@ export async function renderTicketToCanvas(ticket: TicketData): Promise<string> 
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('No se pudo inicializar el contexto 2D de Canvas')
 
-  // Dimensiones HD optimizadas para pantallas de celular
-  const width = 750
-  const height = 1260
+  // Dimensiones dinámicas optimizadas según la cantidad de ítems
+  const metrics = calculateCanvasMetrics(ticket.items.length)
+  const width = metrics.width
+  const height = metrics.height
   canvas.width = width
   canvas.height = height
 
@@ -133,7 +148,7 @@ export async function renderTicketToCanvas(ticket: TicketData): Promise<string> 
     ctx.fillStyle = '#ffffff'
     ctx.fillText(`${item.quantity}x ${item.name}`, 60, yPos)
 
-    const priceText = `$${(item.unitPrice * item.quantity).toLocaleString('es-AR')}`
+    const priceText = `$${(item.unitPrice * item.quantity).toLocaleString(APP_CONFIG.currency.locale)}`
     ctx.fillStyle = '#c084fc'
     ctx.textAlign = 'right'
     ctx.fillText(priceText, width - 60, yPos)
@@ -156,12 +171,12 @@ export async function renderTicketToCanvas(ticket: TicketData): Promise<string> 
   ctx.fillText('TOTAL ABONADO:', 50, yPos)
   ctx.textAlign = 'right'
   ctx.fillStyle = '#34d399'
-  ctx.fillText(`$${ticket.totalAmount.toLocaleString('es-AR')}`, width - 50, yPos)
+  ctx.fillText(`$${ticket.totalAmount.toLocaleString(APP_CONFIG.currency.locale)}`, width - 50, yPos)
   ctx.textAlign = 'center'
 
   // 5. Contenedor del Código QR (Blanco Puro de Alto Contraste con Quiet Zone amplia)
-  const qrBoxY = yPos + 35
   const qrBoxSize = 460
+  const qrBoxY = Math.max(yPos + 35, metrics.qrY)
   const qrBoxX = (width - qrBoxSize) / 2
 
   ctx.fillStyle = '#ffffff'

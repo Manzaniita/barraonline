@@ -199,25 +199,58 @@ export async function verifyQrForBar({
   }
 }
 
-/**
- * Despacha unidades de una orden de forma atómica y transaccional.
- * Valida la firma del QR y registra la auditoría del bartender.
- */
-export async function redeemOrderItems({
-  qrToken,
-  tenantSlug,
-  bartenderUserId,
-  deliveries,
-}: {
-  qrToken: string
-  tenantSlug: string
-  bartenderUserId?: string
-  deliveries: ItemDeliveryInput[]
-}): Promise<{
+export interface RedeemItemRequest {
+  orderItemId: string
+  quantity: number
+  substituteProductId?: string
+  substitutedProductId?: string
+  substitutionNotes?: string
+}
+
+export interface RedemptionResult {
   success: boolean
+  order?: unknown
+  redeemedItemsCount?: number
+  isFullyRedeemed?: boolean
   redemptionLogIds: string[]
   error?: string
-}> {
+}
+
+/**
+ * Despacha unidades de una orden de forma atómica y transaccional.
+ * Valida la firma del QR y aplica bloqueo atómico condicional SQL anti double-spend.
+ */
+export async function redeemOrderItems(
+  param1:
+    | string
+    | {
+        qrToken: string
+        tenantSlug?: string
+        bartenderUserId?: string
+        deliveries?: RedeemItemRequest[]
+        itemsToRedeem?: RedeemItemRequest[]
+      },
+  param2?: RedeemItemRequest[],
+  param3?: string,
+  param4?: string
+): Promise<RedemptionResult> {
+  let qrToken: string
+  let deliveries: RedeemItemRequest[]
+  let bartenderUserId: string | undefined
+  let tenantSlug: string | undefined
+
+  if (typeof param1 === 'object') {
+    qrToken = param1.qrToken
+    deliveries = param1.deliveries || param1.itemsToRedeem || []
+    bartenderUserId = param1.bartenderUserId
+    tenantSlug = param1.tenantSlug
+  } else {
+    qrToken = param1
+    deliveries = param2 || []
+    bartenderUserId = param3
+    tenantSlug = param4
+  }
+
   let cleanToken = (qrToken || '').trim()
   if (cleanToken.startsWith('http://') || cleanToken.startsWith('https://')) {
     try {
@@ -231,7 +264,7 @@ export async function redeemOrderItems({
     } catch {}
   }
 
-  // 1. RESTRICCIÓN DURA DE SEGURIDAD: Exigir firma criptográfica o token válido
+  // 1. Verificación criptográfica obligatoria de la firma del QR
   const sigResult = verifyOrderQrToken(cleanToken)
   let orderId = sigResult.valid && sigResult.payload ? sigResult.payload.orderId : null
 
@@ -249,7 +282,7 @@ export async function redeemOrderItems({
     return {
       success: false,
       redemptionLogIds: [],
-      error: 'SEGURIDAD: No se puede despachar sin escanear un código QR válido firmado.',
+      error: 'SEGURIDAD: No se puede despachar sin un código QR válido y firmado.',
     }
   }
 
@@ -264,19 +297,23 @@ export async function redeemOrderItems({
       return { success: false, redemptionLogIds: [], error: 'Identificación de bartender no encontrada.' }
     }
 
-    // 2. Transacción atómica en PostgreSQL
-    const createdLogIds = await prisma.$transaction(async (tx) => {
+    // 2. Transacción atómica en PostgreSQL con verificación condicional anti double-spend
+    return await prisma.$transaction(async (tx) => {
       const order = await tx.order.findUnique({
         where: { id: orderId },
-        include: { items: { include: { product: true } } },
+        include: { items: { include: { product: true } }, tenant: true },
       })
 
       if (!order) {
         throw new Error('Orden no encontrada.')
       }
 
+      if (tenantSlug && order.tenant.slug !== tenantSlug) {
+        throw new Error('El ticket no pertenece a este local comercial.')
+      }
+
       if (order.status !== 'ACTIVE') {
-        throw new Error(`La orden no está activa (Estado: ${order.status}).`)
+        throw new Error(`La orden no está disponible para canje (Estado: ${order.status}).`)
       }
 
       const logIds: string[] = []
@@ -289,19 +326,37 @@ export async function redeemOrderItems({
           throw new Error(`Ítem de orden ${delivery.orderItemId} no existe.`)
         }
 
-        const remaining = item.quantityPurchased - item.quantityRedeemed
-        if (delivery.quantity > remaining) {
+        // Actualización atómica condicional:
+        // Solo incrementa si quantityRedeemed + delivery.quantity <= quantityPurchased.
+        // Si dos terminales intentan canjear concurrentemente la misma bebida,
+        // la fila se bloquea y el segundo intento actualizará 0 filas y fallará inmediatamente.
+        const updateResult = await tx.orderItem.updateMany({
+          where: {
+            id: item.id,
+            orderId: order.id,
+            quantityRedeemed: {
+              lte: item.quantityPurchased - delivery.quantity,
+            },
+          },
+          data: {
+            quantityRedeemed: {
+              increment: delivery.quantity,
+            },
+          },
+        })
+
+        if (updateResult.count === 0) {
           throw new Error(
-            `Cantidad excesiva para "${item.productNameSnapshot}". Disponibles: ${remaining}, Solicitadas: ${delivery.quantity}.`
+            `Stock insuficiente o ya despachado para: ${item.productNameSnapshot || item.product?.name || 'Bebida'}`
           )
         }
 
-        // Si hay sustitución por falta de stock, validar que el producto de reemplazo
-        // tenga exactamente el mismo precio o menor valor.
+        // Si hay producto de sustitución por falta de stock
         let substituteProductId: string | null = null
-        if (delivery.substituteProductId) {
+        const subId = delivery.substituteProductId || delivery.substitutedProductId
+        if (subId) {
           const substitute = await tx.product.findUnique({
-            where: { id: delivery.substituteProductId },
+            where: { id: subId },
           })
           if (!substitute) {
             throw new Error('Producto de sustitución no encontrado.')
@@ -313,16 +368,6 @@ export async function redeemOrderItems({
           }
           substituteProductId = substitute.id
         }
-
-        // Incrementar la cantidad entregada
-        const updatedItem = await tx.orderItem.update({
-          where: { id: item.id },
-          data: {
-            quantityRedeemed: {
-              increment: delivery.quantity,
-            },
-          },
-        })
 
         // Crear registro inmutable de auditoría en RedemptionLog
         const log = await tx.redemptionLog.create({
@@ -339,11 +384,11 @@ export async function redeemOrderItems({
       }
 
       // 3. Verificar si todos los ítems fueron entregados para marcar como DEPLETED
-      const allItems = await tx.orderItem.findMany({
+      const refreshedItems = await tx.orderItem.findMany({
         where: { orderId: order.id },
       })
 
-      const isAllRedeemed = allItems.every((i) => i.quantityRedeemed >= i.quantityPurchased)
+      const isAllRedeemed = refreshedItems.every((i) => i.quantityRedeemed >= i.quantityPurchased)
       if (isAllRedeemed) {
         await tx.order.update({
           where: { id: order.id },
@@ -351,13 +396,19 @@ export async function redeemOrderItems({
         })
       }
 
-      return logIds
-    })
+      const updatedOrder = await tx.order.findUnique({
+        where: { id: order.id },
+        include: { items: { include: { product: true } } },
+      })
 
-    return {
-      success: true,
-      redemptionLogIds: createdLogIds,
-    }
+      return {
+        success: true,
+        order: updatedOrder,
+        redeemedItemsCount: logIds.length,
+        isFullyRedeemed: isAllRedeemed,
+        redemptionLogIds: logIds,
+      }
+    })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error('[redeemOrderItems] Error en transacción de despacho:', msg)
@@ -459,6 +510,7 @@ export async function lookupOrdersByDni({
       where: { dni: cleanDni },
       include: {
         orders: {
+          where: tenantSlug ? { tenant: { slug: tenantSlug } } : {},
           orderBy: { createdAt: 'desc' },
           include: {
             items: {

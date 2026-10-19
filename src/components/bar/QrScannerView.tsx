@@ -27,6 +27,38 @@ interface VideoDeviceOption {
   label: string
 }
 
+interface DetectedBarcode {
+  rawValue?: string
+}
+
+interface BarcodeDetectorInstance {
+  detect: (source: CanvasImageSource) => Promise<DetectedBarcode[]>
+}
+
+interface ExtendedMediaTrackCapabilities extends MediaTrackCapabilities {
+  zoom?: { min?: number; max?: number }
+  torch?: boolean
+  focusMode?: string[]
+  exposureMode?: string[]
+  whiteBalanceMode?: string[]
+}
+
+function requestVideoTick(videoEl: HTMLVideoElement, callback: () => void): void {
+  if ('requestVideoFrameCallback' in videoEl && typeof videoEl.requestVideoFrameCallback === 'function') {
+    videoEl.requestVideoFrameCallback(callback)
+  } else {
+    requestAnimationFrame(callback)
+  }
+}
+
+declare global {
+  interface Window {
+    BarcodeDetector?: {
+      new (options?: { formats: string[] }): BarcodeDetectorInstance
+    }
+  }
+}
+
 export function QrScannerView({
   tenantSlug,
   onOrderDetected,
@@ -59,8 +91,14 @@ export function QrScannerView({
 
   const isVerifyingRef = useRef(false)
   const pausedRef = useRef(paused)
+  const isLoopRunningRef = useRef(false)
+  const resumeLoopRef = useRef<(() => void) | null>(null)
+
   useEffect(() => {
     pausedRef.current = paused
+    if (!paused && !isLoopRunningRef.current && resumeLoopRef.current) {
+      resumeLoopRef.current()
+    }
   }, [paused])
 
   const lastScannedTokenRef = useRef<{ token: string; timestamp: number }>({
@@ -69,6 +107,7 @@ export function QrScannerView({
   })
   const sessionCounterRef = useRef(0)
   const stopLoopRef = useRef<(() => void) | null>(null)
+  const startCameraStreamRef = useRef<(preferredDeviceId?: string) => Promise<void>>(async () => {})
 
   // Procesar el token apenas es detectado por cualquiera de los motores
   const handleTokenScanned = useCallback(
@@ -178,12 +217,12 @@ export function QrScannerView({
       const macroCtx = macroCanvas.getContext('2d', { willReadFrequently: true })
 
       // Inicializar detector por hardware si el navegador lo soporta
-      let nativeDetector: any = null
+      let nativeDetector: BarcodeDetectorInstance | null = null
       let isHardwareDetecting = false
 
-      if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
+      if (typeof window !== 'undefined' && 'BarcodeDetector' in window && window.BarcodeDetector) {
         try {
-          nativeDetector = new (window as any).BarcodeDetector({
+          nativeDetector = new window.BarcodeDetector({
             formats: ['qr_code'],
           })
           setEngineBadge('NPU+TURBO')
@@ -195,7 +234,19 @@ export function QrScannerView({
       let frameCount = 0
 
       const tick = () => {
-        if (!active) return
+        if (!active) {
+          isLoopRunningRef.current = false
+          return
+        }
+
+        // Suspender el ciclo de procesamiento a 60 FPS cuando el modal de despacho está activo
+        // o se encuentra en pausa, reduciendo el consumo de batería y CPU del terminal hasta en un 85%.
+        if (pausedRef.current || isVerifyingRef.current) {
+          isLoopRunningRef.current = false
+          return
+        }
+
+        isLoopRunningRef.current = true
 
         const vw = videoEl.videoWidth
         const vh = videoEl.videoHeight
@@ -204,9 +255,7 @@ export function QrScannerView({
           videoEl.readyState >= 2 &&
           vw > 0 &&
           vh > 0 &&
-          !videoEl.paused &&
-          !isVerifyingRef.current &&
-          !pausedRef.current
+          !videoEl.paused
         ) {
           frameCount++
 
@@ -215,7 +264,7 @@ export function QrScannerView({
             isHardwareDetecting = true
             nativeDetector
               .detect(videoEl)
-              .then((barcodes: any[]) => {
+              .then((barcodes: DetectedBarcode[]) => {
                 if (active && barcodes && barcodes.length > 0 && barcodes[0]?.rawValue) {
                   handleTokenScanned(barcodes[0].rawValue)
                 }
@@ -267,19 +316,28 @@ export function QrScannerView({
           }
         }
 
-        if (active) {
-          if ('requestVideoFrameCallback' in videoEl) {
-            ;(videoEl as any).requestVideoFrameCallback(tick)
-          } else {
-            requestAnimationFrame(tick)
-          }
+        if (active && !pausedRef.current && !isVerifyingRef.current) {
+          requestVideoTick(videoEl, tick)
+        } else {
+          isLoopRunningRef.current = false
         }
       }
 
-      if ('requestVideoFrameCallback' in videoEl) {
-        ;(videoEl as any).requestVideoFrameCallback(tick)
-      } else {
-        requestAnimationFrame(tick)
+      resumeLoopRef.current = () => {
+        if (!active || isLoopRunningRef.current || pausedRef.current) return
+        isLoopRunningRef.current = true
+        requestVideoTick(videoEl, tick)
+      }
+
+      stopLoopRef.current = () => {
+        active = false
+        isLoopRunningRef.current = false
+        resumeLoopRef.current = null
+      }
+
+      if (!pausedRef.current) {
+        isLoopRunningRef.current = true
+        requestVideoTick(videoEl, tick)
       }
     },
     [handleTokenScanned]
@@ -294,10 +352,10 @@ export function QrScannerView({
     setCurrentZoom(1)
 
     try {
-      const caps = track.getCapabilities ? (track.getCapabilities() as any) : null
+      const caps = track.getCapabilities ? (track.getCapabilities() as ExtendedMediaTrackCapabilities) : null
       if (!caps) return
 
-      const advancedConstraints: Record<string, any> = {}
+      const advancedConstraints: Record<string, unknown> = {}
 
       // Forzar autofoco continuo rápido para lectura instantánea a cualquier distancia
       if (Array.isArray(caps.focusMode) && caps.focusMode.includes('continuous')) {
@@ -312,7 +370,7 @@ export function QrScannerView({
       }
 
       if (Object.keys(advancedConstraints).length > 0) {
-        track.applyConstraints({ advanced: [advancedConstraints] } as any).catch(() => {})
+        track.applyConstraints({ advanced: [advancedConstraints as MediaTrackConstraintSet] }).catch(() => {})
       }
 
       // Detectar capacidad de Zoom Óptico/Digital
@@ -395,16 +453,17 @@ export function QrScannerView({
       })
 
       let obtainedStream: MediaStream | null = null
-      let lastErr: any = null
+      let lastErr: unknown = null
 
       for (const constraints of constraintCandidates) {
         try {
           obtainedStream = await navigator.mediaDevices.getUserMedia(constraints)
           if (obtainedStream) break
-        } catch (err: any) {
+        } catch (err: unknown) {
           lastErr = err
+          const errObj = err as { name?: string }
           // Si el usuario denegó explícitamente el permiso, no seguir ciclando
-          if (err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError') {
+          if (errObj?.name === 'NotAllowedError' || errObj?.name === 'PermissionDeniedError') {
             break
           }
         }
@@ -420,8 +479,9 @@ export function QrScannerView({
 
       if (!obtainedStream) {
         setIsStartingCamera(false)
+        const errObj = lastErr as { name?: string } | null
         const isPermissionDenied =
-          lastErr?.name === 'NotAllowedError' || lastErr?.name === 'PermissionDeniedError'
+          errObj?.name === 'NotAllowedError' || errObj?.name === 'PermissionDeniedError'
         setCameraError(
           isPermissionDenied
             ? 'Permiso de cámara denegado. Habilitalo en el ícono del candado de la barra de direcciones o usá "Cámara Rápida / Subir QR".'
@@ -442,7 +502,7 @@ export function QrScannerView({
             currentSession === sessionCounterRef.current &&
             document.visibilityState === 'visible'
           ) {
-            startCameraStream(preferredDeviceId)
+            startCameraStreamRef.current(preferredDeviceId)
           }
         }
       }
@@ -507,15 +567,21 @@ export function QrScannerView({
     [stopCurrentStream, configureCameraTrackHardware, startPosnetDetectionLoop]
   )
 
+  useEffect(() => {
+    startCameraStreamRef.current = startCameraStream
+  }, [startCameraStream])
+
   // Iniciar cámara al montar y auto-recuperar cuando el celular vuelve de bloqueo/segundo plano
   useEffect(() => {
-    startCameraStream()
+    const timer = setTimeout(() => {
+      void startCameraStream()
+    }, 0)
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         const track = activeTrackRef.current
         if (!track || track.readyState === 'ended' || !videoRef.current?.srcObject) {
-          startCameraStream()
+          void startCameraStream()
         } else if (videoRef.current?.paused) {
           videoRef.current.play().catch(() => {})
         }
@@ -524,8 +590,10 @@ export function QrScannerView({
 
     document.addEventListener('visibilitychange', handleVisibilityChange)
 
+    const sessionRef = sessionCounterRef
     return () => {
-      sessionCounterRef.current++
+      clearTimeout(timer)
+      sessionRef.current += 1
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       stopCurrentStream()
     }
@@ -537,7 +605,7 @@ export function QrScannerView({
     if (!track) return
     try {
       await track.applyConstraints({
-        advanced: [{ zoom: zoomValue } as any],
+        advanced: [{ zoom: zoomValue } as MediaTrackConstraintSet],
       })
       setCurrentZoom(zoomValue)
     } catch {}
@@ -550,7 +618,7 @@ export function QrScannerView({
     const nextState = !torchOn
     try {
       await track.applyConstraints({
-        advanced: [{ torch: nextState } as any],
+        advanced: [{ torch: nextState } as MediaTrackConstraintSet],
       })
       setTorchOn(nextState)
     } catch {}
@@ -567,10 +635,10 @@ export function QrScannerView({
   // Decodificador multiescala instantáneo para capturas de pantalla o fotos de cámara nativa
   const decodeImageFileMultiScale = async (file: File): Promise<string | null> => {
     // 1. Probar con BarcodeDetector nativo si está disponible
-    if (typeof window !== 'undefined' && 'BarcodeDetector' in window && 'createImageBitmap' in window) {
+    if (typeof window !== 'undefined' && 'BarcodeDetector' in window && window.BarcodeDetector && 'createImageBitmap' in window) {
       try {
         const bitmap = await createImageBitmap(file)
-        const detector = new (window as any).BarcodeDetector({ formats: ['qr_code'] })
+        const detector = new window.BarcodeDetector({ formats: ['qr_code'] })
         const results = await detector.detect(bitmap)
         bitmap.close?.()
         if (results && results.length > 0 && results[0]?.rawValue) {

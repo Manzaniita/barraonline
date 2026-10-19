@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
+import { env } from '@/config/env'
 import {
   OAUTH_STATE_COOKIE,
   buildAuthorizationUrl,
@@ -62,6 +63,10 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ provider: s
   }
 
   // SI NO TIENE CLAVES REALES CONFIGURADAS EN .ENV:
+  if (!env.ALLOW_OAUTH_SIMULATION) {
+    return backWithError('Autenticación externa no disponible.')
+  }
+
   // Si se solicita auto-login directo (?auto=true)
   if (sp.get('auto') === 'true') {
     const defaultEmail = provider === 'google' ? 'cliente.google@gmail.com' : 'cliente.apple@icloud.com'
@@ -291,6 +296,13 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ provider: s
  * Procesa la autenticación social simulada y establece la cookie de sesión.
  */
 export async function POST(req: NextRequest, ctx: { params: Promise<{ provider: string }> }) {
+  if (!env.ALLOW_OAUTH_SIMULATION) {
+    return NextResponse.json(
+      { success: false, error: 'Endpoint de simulación OAuth deshabilitado en este entorno' },
+      { status: 403 }
+    )
+  }
+
   const { provider } = await ctx.params
   if (!isOAuthProvider(provider)) {
     return NextResponse.json({ success: false, error: 'Proveedor no válido.' }, { status: 400 })

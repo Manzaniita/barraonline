@@ -33,8 +33,10 @@ export function StoreHeader({ theme, tenantSlug }: StoreHeaderProps) {
       const err = sp.get('auth_error')
       const authOk = sp.get('auth')
       if (err) {
-        setAuthError(err)
-        setIsAuthModalOpen(true)
+        setTimeout(() => {
+          setAuthError(err)
+          setIsAuthModalOpen(true)
+        }, 0)
       }
       if (err || authOk) {
         sp.delete('auth_error')
@@ -73,7 +75,7 @@ export function StoreHeader({ theme, tenantSlug }: StoreHeaderProps) {
 
   return (
     <>
-      <header className="sticky top-0 z-30 bg-[#0a0a0c]/85 backdrop-blur-md border-b border-white/10 px-4 py-3">
+      <header className="sticky top-0 z-30 bg-obsidian-surface/85 backdrop-blur-md border-b border-obsidian-border px-4 py-3">
         <div className="max-w-md mx-auto flex items-center justify-between gap-2">
           {/* Marca del boliche */}
           <div className="flex items-center gap-2.5 min-w-0">

@@ -62,7 +62,7 @@ export function RollbackBanner({
 
   return (
     <div className="fixed top-4 inset-x-4 z-50 max-w-md mx-auto animate-in slide-in-from-top-4 duration-300">
-      <div className="bg-[#1c1815] border-2 border-amber-500/60 rounded-2xl p-3.5 shadow-2xl shadow-amber-950/80 text-white flex items-center justify-between gap-3">
+      <div className="bg-obsidian-elevated border-2 border-amber-500/60 rounded-2xl p-3.5 shadow-2xl shadow-amber-950/80 text-white flex items-center justify-between gap-3">
         {reverted ? (
           <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold w-full justify-center py-1">
             <CheckCircle className="w-4 h-4" />

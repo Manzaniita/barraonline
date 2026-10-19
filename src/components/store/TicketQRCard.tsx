@@ -13,7 +13,6 @@ import { getSavedCustomerProfile } from '@/lib/customer-session'
 import {
   Download,
   Share2,
-  Maximize2,
   CheckCircle2,
   ShieldAlert,
   Sparkles,
@@ -33,7 +32,6 @@ export function TicketQRCard({
   orderId,
   tenantSlug,
   nightclubName,
-  demo = false,
 }: TicketQRCardProps) {
   const [ticketData, setTicketData] = useState<TicketData | null>(null)
   const [ticketImageUrl, setTicketImageUrl] = useState<string | null>(null)
@@ -52,32 +50,31 @@ export function TicketQRCard({
           fullName: 'Cliente de Prueba',
         }
 
-        // Obtener el token firmado real vía simulate-payment (o API de orden)
-        const response = await fetch('/api/checkout/simulate-payment', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            orderId,
-            tenantSlug,
-            userDni: customer.dni,
-            customerName: customer.fullName,
-          }),
-        })
+        // Obtener la orden real y su token criptográfico firmado desde el endpoint seguro
+        const response = await fetch(`/api/customer/orders/${orderId}`)
+        let qrToken = ''
+        let dbOrder = null
 
-        const data = await response.json()
-        const qrToken = data.qrToken || `mock.token.${orderId}`
-        const dbOrder = data.order
+        if (response.ok) {
+          const data = await response.json()
+          qrToken = data.qrToken || ''
+          dbOrder = data.order
+        }
 
         const ticket: TicketData = {
           orderId,
           tenantSlug,
-          nightclubName,
-          customerName: dbOrder?.customerName || customer.fullName,
-          customerDni: dbOrder?.customerDni || customer.dni,
-          totalAmount: dbOrder?.totalAmount || 14000,
-          expiresAt: data.expiresAt || new Date(Date.now() + 1000 * 60 * 60 * 10).toISOString(),
+          nightclubName: dbOrder?.tenant?.name || nightclubName,
+          customerName: dbOrder?.user?.fullName || customer.fullName,
+          customerDni: dbOrder?.user?.dni || customer.dni,
+          totalAmount: dbOrder?.totalAmount ? Number(dbOrder.totalAmount) : 14000,
+          expiresAt: dbOrder?.expiresAt ? new Date(dbOrder.expiresAt).toISOString() : new Date(Date.now() + 1000 * 60 * 60 * 10).toISOString(),
           items: dbOrder?.items?.length
-            ? dbOrder.items
+            ? dbOrder.items.map((i: { productNameSnapshot?: string; product?: { name: string }; quantityPurchased: number; unitPrice: number }) => ({
+                name: i.productNameSnapshot || i.product?.name || 'Bebida',
+                quantity: i.quantityPurchased,
+                unitPrice: Number(i.unitPrice),
+              }))
             : [
                 { name: 'Fernet Branca con Coca 750ml', quantity: 2, unitPrice: 6500 },
                 { name: 'Agua Mineral Kin con o sin gas 500ml', quantity: 1, unitPrice: 1000 },
@@ -141,7 +138,7 @@ export function TicketQRCard({
 
   if (isGenerating) {
     return (
-      <div className="w-full bg-[#12121a] border border-white/10 rounded-3xl p-8 text-center flex flex-col items-center justify-center space-y-4 animate-pulse">
+      <div className="w-full bg-obsidian-elevated border border-obsidian-border rounded-3xl p-8 text-center flex flex-col items-center justify-center space-y-4 animate-pulse">
         <div className="w-16 h-16 rounded-2xl bg-purple-500/20 text-purple-400 flex items-center justify-center">
           <Sparkles className="w-8 h-8 animate-spin" />
         </div>
@@ -167,7 +164,7 @@ export function TicketQRCard({
       </div>
 
       {/* Card Visual del Ticket */}
-      <div className="bg-[#12121a] border-2 border-purple-500/30 rounded-3xl p-5 shadow-2xl relative overflow-hidden text-center">
+      <div className="bg-obsidian-elevated border-2 border-purple-500/30 rounded-3xl p-5 shadow-2xl relative overflow-hidden text-center">
         <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-purple-500 via-pink-500 to-amber-500" />
 
         <div className="flex items-center justify-between text-xs text-white/60 mb-3">

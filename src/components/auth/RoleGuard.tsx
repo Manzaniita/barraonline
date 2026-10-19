@@ -80,7 +80,7 @@ export function RoleGuard({
 
   if (checking || !authorized) {
     return (
-      <div className="min-h-screen bg-[#07070b] text-white flex flex-col items-center justify-center p-6">
+      <div className="min-h-screen bg-void-black text-white flex flex-col items-center justify-center p-6">
         <div className="w-10 h-10 rounded-full border-4 border-t-purple-500 border-purple-950 animate-spin mb-3" />
         <p className="text-xs font-mono uppercase tracking-widest text-gray-400">
           Verificando permisos...

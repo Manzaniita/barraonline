@@ -530,7 +530,7 @@ export function UsersRoleManager({
       {/* MODAL 1: CREAR CUENTA NUEVA CON ROL Y BOLICHE */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#12121a] border border-purple-500/40 rounded-3xl p-6 md:p-8 max-w-lg w-full shadow-2xl relative max-h-[90vh] overflow-y-auto">
+          <div className="bg-obsidian-elevated border border-purple-500/40 rounded-3xl p-6 md:p-8 max-w-lg w-full shadow-2xl relative max-h-[90vh] overflow-y-auto">
             <button
               onClick={() => setShowCreateModal(false)}
               className="absolute top-4 right-4 p-2 text-white/50 hover:text-white rounded-full bg-white/5 hover:bg-white/10"
@@ -705,7 +705,7 @@ export function UsersRoleManager({
       {/* MODAL 2: EDITAR USUARIO COMPLETO */}
       {editingUser && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#12121a] border border-purple-500/40 rounded-3xl p-6 md:p-8 max-w-lg w-full shadow-2xl relative max-h-[90vh] overflow-y-auto">
+          <div className="bg-obsidian-elevated border border-purple-500/40 rounded-3xl p-6 md:p-8 max-w-lg w-full shadow-2xl relative max-h-[90vh] overflow-y-auto">
             <button
               onClick={() => setEditingUser(null)}
               className="absolute top-4 right-4 p-2 text-white/50 hover:text-white rounded-full bg-white/5 hover:bg-white/10"
@@ -871,7 +871,7 @@ export function UsersRoleManager({
       {/* MODAL 3: CONFIRMAR ELIMINACIÓN DE USUARIO */}
       {deletingUser && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#141014] border border-rose-500/40 rounded-3xl p-6 md:p-8 max-w-md w-full shadow-2xl relative text-white animate-in zoom-in-95 duration-150">
+          <div className="bg-obsidian-elevated border border-rose-500/40 rounded-3xl p-6 md:p-8 max-w-md w-full shadow-2xl relative text-white animate-in zoom-in-95 duration-150">
             <div className="w-12 h-12 rounded-2xl bg-rose-500/20 border border-rose-500/30 text-rose-400 flex items-center justify-center mb-4">
               <AlertTriangle className="w-6 h-6" />
             </div>

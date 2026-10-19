@@ -795,7 +795,7 @@ export function QrScannerView({
 
             {/* Haz Láser Neón */}
             {isScanning && !isVerifying && (
-              <div className="w-5/6 h-0.5 bg-gradient-to-r from-transparent via-pink-500 to-transparent shadow-[0_0_14px_#ec4899] animate-pulse" />
+              <div className="w-5/6 h-0.5 bg-gradient-to-r from-transparent via-pink-500 to-transparent shadow-[0_0_14px_var(--color-neon-magenta)] animate-pulse" />
             )}
           </div>
         </div>
@@ -942,7 +942,7 @@ export function QrScannerView({
       </p>
 
       {/* Entrada Manual de Respaldo */}
-      <div className="bg-[#12121a] border border-white/10 rounded-2xl p-3.5 max-w-sm mx-auto">
+      <div className="bg-obsidian-surface border border-obsidian-border rounded-2xl p-3.5 max-w-sm mx-auto">
         <div className="flex items-center gap-1.5 text-xs text-white/60 mb-2 font-semibold">
           <Terminal className="w-3.5 h-3.5 text-purple-400" />
           <span>Ingreso manual de token o ID (Fallback):</span>

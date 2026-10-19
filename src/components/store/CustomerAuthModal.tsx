@@ -359,7 +359,7 @@ export function CustomerAuthModal({
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <div className="relative w-full max-w-md bg-[#111119] border border-white/15 rounded-3xl shadow-[0_0_60px_rgba(168,85,247,0.22)] overflow-hidden text-white my-auto max-h-[90vh] flex flex-col">
+      <div className="relative w-full max-w-md bg-obsidian-surface border border-obsidian-border rounded-3xl shadow-[0_0_60px_rgba(168,85,247,0.22)] overflow-hidden text-white my-auto max-h-[90vh] flex flex-col">
         {/* Resplandor decorativo neon nocturno superior */}
         <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-64 h-32 bg-gradient-to-b from-purple-500/30 via-pink-500/15 to-transparent blur-3xl pointer-events-none rounded-full" />
 

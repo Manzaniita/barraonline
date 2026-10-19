@@ -99,7 +99,7 @@ export function CartDrawer({ tenantSlug, nightclubName }: CartDrawerProps) {
   return (
     <>
       <div className="fixed inset-0 z-50 flex justify-end bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-[#0e0e13] border-l border-white/10 w-full max-w-md h-full flex flex-col justify-between text-white shadow-2xl animate-in slide-in-from-right duration-300">
+      <div className="bg-obsidian-surface border-l border-obsidian-border w-full max-w-md h-full flex flex-col justify-between text-white shadow-2xl animate-in slide-in-from-right duration-300">
         {/* Cabecera del Carrito */}
         <div className="p-4 border-b border-white/10 flex items-center justify-between">
           <div>
@@ -142,7 +142,7 @@ export function CartDrawer({ tenantSlug, nightclubName }: CartDrawerProps) {
             items.map(({ product, quantity }) => (
               <div
                 key={product.id}
-                className="bg-[#15151e] border border-white/10 rounded-xl p-3 flex items-center justify-between gap-3"
+                className="bg-obsidian-elevated border border-obsidian-border rounded-xl p-3 flex items-center justify-between gap-3"
               >
                 <div className="flex-1 min-w-0">
                   <h4 className="font-bold text-sm text-white truncate">
@@ -190,7 +190,7 @@ export function CartDrawer({ tenantSlug, nightclubName }: CartDrawerProps) {
 
         {/* Sección Inferior: Identificación y Checkout */}
         {items.length > 0 && (
-          <div className="p-4 bg-[#121219] border-t border-white/10 space-y-3.5">
+          <div className="p-4 bg-obsidian-surface border-t border-obsidian-border space-y-3.5">
             {/* Estado de Identificación del Comprador */}
             <div className="bg-white/5 rounded-xl p-3 border border-white/10">
               {customer ? (

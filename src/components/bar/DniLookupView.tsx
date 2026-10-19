@@ -67,7 +67,7 @@ export function DniLookupView({ tenantSlug }: DniLookupViewProps) {
             value={dni}
             onChange={(e) => setDni(e.target.value.replace(/\D/g, ''))}
             placeholder="Buscar por DNI del cliente..."
-            className="w-full bg-[#14141e] border border-white/10 rounded-2xl py-3 pl-10 pr-4 text-sm text-white placeholder-white/40 focus:outline-none focus:border-purple-500"
+            className="w-full bg-obsidian-elevated border border-obsidian-border rounded-2xl py-3 pl-10 pr-4 text-sm text-white placeholder-white/40 focus:outline-none focus:border-purple-500"
           />
         </div>
         <button
@@ -90,7 +90,7 @@ export function DniLookupView({ tenantSlug }: DniLookupViewProps) {
       {result && (
         <div className="space-y-3">
           {result.found ? (
-            <div className="bg-[#12121a] border border-white/10 rounded-3xl p-5 space-y-4">
+            <div className="bg-obsidian-surface border border-obsidian-border rounded-3xl p-5 space-y-4">
               <div className="flex items-center gap-3 pb-3 border-b border-white/10">
                 <div className="w-10 h-10 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center font-bold">
                   <User className="w-5 h-5" />
@@ -157,7 +157,7 @@ export function DniLookupView({ tenantSlug }: DniLookupViewProps) {
               </div>
             </div>
           ) : (
-            <div className="bg-[#12121a] border border-white/10 rounded-3xl p-8 text-center text-white/50">
+            <div className="bg-obsidian-surface border border-obsidian-border rounded-3xl p-8 text-center text-white/50">
               <Sparkles className="w-8 h-8 mx-auto text-purple-400 mb-2 opacity-50" />
               <p className="text-sm font-medium">No se encontraron compras para el DNI {dni}</p>
             </div>

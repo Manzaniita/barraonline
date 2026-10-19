@@ -114,7 +114,7 @@ export function DispatchModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="bg-[#12121a] border-2 border-purple-500/40 rounded-3xl w-full max-w-lg shadow-2xl flex flex-col max-h-[92vh] overflow-hidden text-white">
+      <div className="bg-obsidian-surface border-2 border-purple-500/40 rounded-3xl w-full max-w-lg shadow-2xl flex flex-col max-h-[92vh] overflow-hidden text-white">
         {/* Cabecera del Cliente */}
         <div className="p-4 bg-gradient-to-r from-purple-900/40 via-purple-800/20 to-black border-b border-white/10 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -180,7 +180,7 @@ export function DispatchModal({
                     ? 'bg-black/30 border-white/5 opacity-50'
                     : delivering > 0
                     ? 'bg-purple-950/20 border-purple-500/40 shadow-lg shadow-purple-950/20'
-                    : 'bg-[#161622] border-white/10'
+                    : 'bg-obsidian-elevated border-obsidian-border'
                 }`}
               >
                 <div className="flex items-start justify-between gap-3 mb-2">
@@ -238,7 +238,7 @@ export function DispatchModal({
         </div>
 
         {/* Botón de Confirmación Gigante */}
-        <div className="p-4 bg-[#14141e] border-t border-white/10 space-y-2">
+        <div className="p-4 bg-obsidian-surface border-t border-obsidian-border space-y-2">
           <button
             onClick={handleConfirmRedeem}
             disabled={totalDelivering === 0 || isSubmitting}

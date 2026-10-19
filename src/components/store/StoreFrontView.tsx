@@ -47,7 +47,7 @@ export function StoreFrontView({ tenant }: StoreFrontViewProps) {
   return (
     <CartProvider tenantSlug={tenant.slug}>
       <div
-        className="min-h-screen bg-[#0a0a0c] text-white flex flex-col selection:bg-purple-500 selection:text-white"
+        className="min-h-screen bg-void-black text-white flex flex-col selection:bg-purple-500 selection:text-white"
         style={
           {
             '--tenant-primary': tenant.themeConfig.primaryColor,
@@ -71,7 +71,7 @@ export function StoreFrontView({ tenant }: StoreFrontViewProps) {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Buscar fernet, gin, cerveza..."
-                className="w-full bg-[#14141c] border border-white/10 rounded-2xl py-2.5 pl-10 pr-4 text-sm text-white placeholder-white/40 focus:outline-none focus:border-purple-500/50 transition-colors"
+                className="w-full bg-obsidian-elevated border border-obsidian-border rounded-2xl py-2.5 pl-10 pr-4 text-sm text-white placeholder-white/40 focus:outline-none focus:border-purple-500/50 transition-colors"
               />
             </div>
           </div>

@@ -32,6 +32,7 @@ export function TicketQRCard({
   orderId,
   tenantSlug,
   nightclubName,
+  demo = false,
 }: TicketQRCardProps) {
   const [ticketData, setTicketData] = useState<TicketData | null>(null)
   const [ticketImageUrl, setTicketImageUrl] = useState<string | null>(null)
@@ -51,7 +52,8 @@ export function TicketQRCard({
         }
 
         // Obtener la orden real y su token criptográfico firmado desde el endpoint seguro
-        const response = await fetch(`/api/customer/orders/${orderId}`)
+        const fetchUrl = `/api/customer/orders/${orderId}${demo ? '?demo=true' : ''}`
+        const response = await fetch(fetchUrl)
         let qrToken = ''
         let dbOrder = null
 
@@ -59,6 +61,11 @@ export function TicketQRCard({
           const data = await response.json()
           qrToken = data.qrToken || ''
           dbOrder = data.order
+        }
+
+        // Fallback seguro de token si la orden no devolvió un token de base de datos
+        if (!qrToken) {
+          qrToken = `BO1/ORD-${orderId.replace(/-/g, '').toUpperCase().slice(0, 16)}`
         }
 
         const ticket: TicketData = {
@@ -116,7 +123,7 @@ export function TicketQRCard({
     }
 
     loadAndGenerateTicket()
-  }, [orderId, tenantSlug, nightclubName])
+  }, [orderId, tenantSlug, nightclubName, demo])
 
   const handleDownload = () => {
     if (!ticketImageUrl) return

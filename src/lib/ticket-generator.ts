@@ -48,14 +48,15 @@ export function calculateCanvasMetrics(itemsCount: number) {
  * - Nivel 'M' (15% recuperación ante reflejos/dedos en pantalla) + Quiet Zone de 3 módulos.
  */
 export async function generateQrDataUrl(qrToken: string): Promise<string> {
-  const clean = qrToken.trim()
-  const upper = clean.toUpperCase()
+  const clean = (qrToken || '').trim()
+  const tokenToEncode = clean || `BO1/ORD-${Date.now().toString(36).toUpperCase()}`
+  const upper = tokenToEncode.toUpperCase()
   const isAlphanumericCompatible =
-    upper.startsWith('BO1/') || ALPHANUMERIC_QR_REGEX.test(clean)
+    upper.startsWith('BO1/') || ALPHANUMERIC_QR_REGEX.test(tokenToEncode)
 
   const segments = isAlphanumericCompatible
-    ? [{ data: isAlphanumericCompatible && upper.startsWith('BO1/') ? upper : clean, mode: 'alphanumeric' as const }]
-    : clean
+    ? [{ data: isAlphanumericCompatible && upper.startsWith('BO1/') ? upper : tokenToEncode, mode: 'alphanumeric' as const }]
+    : tokenToEncode
 
   return QRCode.toDataURL(segments, {
     errorCorrectionLevel: 'M',

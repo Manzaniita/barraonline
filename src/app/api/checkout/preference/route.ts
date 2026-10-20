@@ -135,13 +135,13 @@ export async function POST(req: NextRequest) {
           }
         })
 
-        // Crear Orden en estado PENDING
+        // Crear Orden en estado PENDING (o ACTIVE si el boliche opera en modo demo / sin credenciales de MP)
         await prisma.order.create({
           data: {
             id: orderId,
             tenantId: dbTenant.id,
             userId: user.id,
-            status: 'PENDING',
+            status: dbTenant.mpAccessTokenEnc ? 'PENDING' : 'ACTIVE',
             totalAmount: totalAmount,
             expiresAt,
             items: {

@@ -25,9 +25,11 @@ const CartContext = createContext<CartContextType | undefined>(undefined)
 export function CartProvider({
   children,
   tenantSlug,
+  catalogProducts,
 }: {
   children: React.ReactNode
   tenantSlug: string
+  catalogProducts?: StoreProduct[]
 }) {
   const [items, setItems] = useState<CartItem[]>([])
   const [isCartOpen, setIsCartOpen] = useState(false)
@@ -35,19 +37,38 @@ export function CartProvider({
 
   const storageKey = `barraonline_cart_${tenantSlug}`
 
-  // Cargar carrito desde localStorage al montar
+  // Cargar carrito desde localStorage al montar y reconciliar con el catálogo real del servidor
   useEffect(() => {
     try {
       const saved = localStorage.getItem(storageKey)
       if (saved) {
-        setItems(JSON.parse(saved))
+        const parsed: CartItem[] = JSON.parse(saved)
+        if (Array.isArray(parsed)) {
+          if (catalogProducts) {
+            const productMap = new Map(catalogProducts.map((p) => [p.id, p]))
+            const reconciled: CartItem[] = []
+            for (const item of parsed) {
+              const liveProduct = productMap.get(item?.product?.id)
+              if (liveProduct && liveProduct.isActive && liveProduct.stockAvailable > 0) {
+                const validQty = Math.min(Math.max(1, item.quantity || 1), liveProduct.stockAvailable)
+                reconciled.push({
+                  product: liveProduct,
+                  quantity: validQty,
+                })
+              }
+            }
+            setItems(reconciled)
+          } else {
+            setItems(parsed)
+          }
+        }
       }
     } catch {
       // Ignorar errores de parsing
     } finally {
       setIsLoaded(true)
     }
-  }, [storageKey])
+  }, [storageKey, catalogProducts])
 
   // Guardar carrito al actualizar
   useEffect(() => {
@@ -60,11 +81,15 @@ export function CartProvider({
   }, [items, storageKey, isLoaded])
 
   const addItem = (product: StoreProduct) => {
+    if (!product.isActive || product.stockAvailable <= 0) return
     setItems((prev) => {
       const existing = prev.find((i) => i.product.id === product.id)
       if (existing) {
+        if (existing.quantity >= product.stockAvailable) return prev
         return prev.map((i) =>
-          i.product.id === product.id ? { ...i, quantity: i.quantity + 1 } : i
+          i.product.id === product.id
+            ? { product, quantity: Math.min(i.quantity + 1, product.stockAvailable) }
+            : i
         )
       }
       return [...prev, { product, quantity: 1 }]
@@ -81,9 +106,11 @@ export function CartProvider({
       return
     }
     setItems((prev) =>
-      prev.map((i) =>
-        i.product.id === productId ? { ...i, quantity } : i
-      )
+      prev.map((i) => {
+        if (i.product.id !== productId) return i
+        const maxStock = i.product.stockAvailable ?? 9999
+        return { ...i, quantity: Math.min(quantity, maxStock) }
+      })
     )
   }
 

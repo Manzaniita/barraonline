@@ -14,13 +14,22 @@ export async function GET(
     where: { id: orderId },
     include: {
       items: { include: { product: true } },
-      tenant: { select: { slug: true, name: true, mpAccessTokenEnc: true } },
+      tenant: {
+        select: {
+          slug: true,
+          name: true,
+          isActive: true,
+          subscriptionStatus: true,
+          defaultExpirationHour: true,
+          mpAccessTokenEnc: true,
+        },
+      },
       user: { select: { fullName: true, dni: true } },
     },
   })
 
-  if (!order) {
-    return NextResponse.json({ error: 'Orden no encontrada' }, { status: 404 })
+  if (!order || !order.tenant || !order.tenant.isActive || order.tenant.subscriptionStatus === 'CANCELLED') {
+    return NextResponse.json({ error: 'Orden o tienda no encontrada' }, { status: 404 })
   }
 
   // Si la orden está en PENDING pero viene de navegación demo o el boliche no tiene credenciales de Mercado Pago,

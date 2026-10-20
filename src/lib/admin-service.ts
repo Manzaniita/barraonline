@@ -11,18 +11,45 @@ export interface ProductPerformance {
   id: string
   name: string
   category: string
+  description?: string | null
   price: number
+  imageUrl?: string | null
   isActive: boolean
   stockAvailable: number
+  redeemDeadlineTime?: string | null
   purchasedCount: number
   redeemedCount: number
   remainingCount: number
   revenue: number
 }
 
+export interface TenantSettingsData {
+  id: string
+  name: string
+  slug: string
+  defaultExpirationHour: string
+  mpSellerId?: string | null
+  mpPublicKey?: string | null
+  hasMpAccessToken: boolean
+  hasMpWebhookSecret: boolean
+  themeConfig: {
+    nightclubName?: string
+    tagline?: string
+    searchPlaceholder?: string
+    logoUrl?: string
+    bannerUrl?: string
+    primaryColor?: string
+    secondaryColor?: string
+    backgroundColor?: string
+    cardBackground?: string
+    textColor?: string
+  }
+}
+
 export interface ClubNightMetrics {
   tenantName: string
   tenantSlug: string
+  tenantSettings: TenantSettingsData
   totalRevenue: number
   totalOrdersCount: number
   activeOrdersCount: number
@@ -210,9 +237,12 @@ export async function getClubDashboardMetrics(tenantSlug: string): Promise<ClubN
         id: p.id,
         name: p.name,
         category: p.category,
+        description: p.description,
         price: Number(p.price),
+        imageUrl: p.imageUrl,
         isActive: p.isActive,
         stockAvailable: p.stockAvailable,
+        redeemDeadlineTime: p.redeemDeadlineTime,
         purchasedCount: stats.purchased,
         redeemedCount: stats.redeemed,
         remainingCount: Math.max(0, stats.purchased - stats.redeemed),
@@ -256,9 +286,38 @@ export async function getClubDashboardMetrics(tenantSlug: string): Promise<ClubN
       itemsCount: o.items.reduce((sum, it) => sum + it.quantityPurchased, 0),
     }))
 
+    const rawTheme =
+      tenant.themeConfig && typeof tenant.themeConfig === 'object'
+        ? (tenant.themeConfig as Record<string, any>)
+        : {}
+
+    const tenantSettings: TenantSettingsData = {
+      id: tenant.id,
+      name: tenant.name,
+      slug: tenant.slug,
+      defaultExpirationHour: tenant.defaultExpirationHour || '07:00',
+      mpSellerId: tenant.mpSellerId,
+      mpPublicKey: tenant.mpPublicKey,
+      hasMpAccessToken: Boolean(tenant.mpAccessTokenEnc),
+      hasMpWebhookSecret: Boolean(tenant.mpWebhookSecret),
+      themeConfig: {
+        nightclubName: rawTheme.nightclubName || tenant.name,
+        tagline: rawTheme.tagline || '',
+        searchPlaceholder: rawTheme.searchPlaceholder || '',
+        logoUrl: rawTheme.logoUrl || '',
+        bannerUrl: rawTheme.bannerUrl || '',
+        primaryColor: rawTheme.primaryColor || '#9333ea',
+        secondaryColor: rawTheme.secondaryColor || '#ec4899',
+        backgroundColor: rawTheme.backgroundColor || '#0a0a0c',
+        cardBackground: rawTheme.cardBackground || '#12121a',
+        textColor: rawTheme.textColor || '#ffffff',
+      },
+    }
+
     return {
       tenantName: tenant.name,
       tenantSlug: tenant.slug,
+      tenantSettings,
       totalRevenue,
       totalOrdersCount,
       activeOrdersCount,
@@ -297,22 +356,186 @@ export async function toggleProductStatus({
 }
 
 /**
- * Actualiza stock o precio de un trago.
+ * Crea un nuevo producto en la carta del boliche.
+ */
+export async function createProduct({
+  tenantSlug,
+  name,
+  category,
+  description,
+  price,
+  stockAvailable,
+  imageUrl,
+  redeemDeadlineTime,
+  isActive = true,
+}: {
+  tenantSlug: string
+  name: string
+  category: string
+  description?: string | null
+  price: number
+  stockAvailable: number
+  imageUrl?: string | null
+  redeemDeadlineTime?: string | null
+  isActive?: boolean
+}) {
+  const tenant = await prisma.tenant.findUnique({
+    where: { slug: tenantSlug },
+  })
+  if (!tenant) {
+    throw new Error('Tienda no encontrada.')
+  }
+
+  return prisma.product.create({
+    data: {
+      tenantId: tenant.id,
+      name: name.trim(),
+      category: category.trim() || 'General',
+      description: description?.trim() || null,
+      price: Number(price),
+      stockAvailable: Math.max(0, Number(stockAvailable) || 0),
+      imageUrl: imageUrl?.trim() || null,
+      redeemDeadlineTime: redeemDeadlineTime?.trim() || null,
+      isActive: Boolean(isActive),
+    },
+  })
+}
+
+/**
+ * Actualiza todos los campos editables de un producto.
  */
 export async function updateProductDetails({
   productId,
+  name,
+  category,
+  description,
   price,
   stockAvailable,
+  imageUrl,
+  redeemDeadlineTime,
+  isActive,
 }: {
   productId: string
+  name?: string
+  category?: string
+  description?: string | null
   price?: number
   stockAvailable?: number
+  imageUrl?: string | null
+  redeemDeadlineTime?: string | null
+  isActive?: boolean
 }) {
   return prisma.product.update({
     where: { id: productId },
     data: {
-      ...(price !== undefined ? { price } : {}),
-      ...(stockAvailable !== undefined ? { stockAvailable } : {}),
+      ...(name !== undefined ? { name: name.trim() } : {}),
+      ...(category !== undefined ? { category: category.trim() || 'General' } : {}),
+      ...(description !== undefined ? { description: description ? description.trim() : null } : {}),
+      ...(price !== undefined ? { price: Number(price) } : {}),
+      ...(stockAvailable !== undefined ? { stockAvailable: Math.max(0, Number(stockAvailable) || 0) } : {}),
+      ...(imageUrl !== undefined ? { imageUrl: imageUrl ? imageUrl.trim() : null } : {}),
+      ...(redeemDeadlineTime !== undefined
+        ? { redeemDeadlineTime: redeemDeadlineTime ? redeemDeadlineTime.trim() : null }
+        : {}),
+      ...(isActive !== undefined ? { isActive: Boolean(isActive) } : {}),
+    },
+  })
+}
+
+/**
+ * Elimina un producto y limpia sus referencias en cascada transaccional.
+ */
+export async function deleteProduct({ productId }: { productId: string }) {
+  return prisma.$transaction(async (tx) => {
+    const orderItems = await tx.orderItem.findMany({
+      where: { productId },
+      select: { id: true },
+    })
+    const orderItemIds = orderItems.map((i) => i.id)
+
+    if (orderItemIds.length > 0) {
+      await tx.redemptionLog.deleteMany({
+        where: { orderItemId: { in: orderItemIds } },
+      })
+    }
+
+    await tx.redemptionLog.updateMany({
+      where: { substitutedProductId: productId },
+      data: { substitutedProductId: null },
+    })
+
+    await tx.orderItem.deleteMany({
+      where: { productId },
+    })
+
+    await tx.breakageLog.deleteMany({
+      where: { productId },
+    })
+
+    return tx.product.delete({
+      where: { id: productId },
+    })
+  })
+}
+
+/**
+ * Actualiza la configuración general, estética y credenciales de la tienda.
+ */
+export async function updateTenantSettings({
+  tenantSlug,
+  name,
+  defaultExpirationHour,
+  mpSellerId,
+  mpPublicKey,
+  mpAccessTokenEnc,
+  mpWebhookSecret,
+  themeConfig,
+}: {
+  tenantSlug: string
+  name?: string
+  defaultExpirationHour?: string
+  mpSellerId?: string | null
+  mpPublicKey?: string | null
+  mpAccessTokenEnc?: string | null
+  mpWebhookSecret?: string | null
+  themeConfig?: Record<string, any>
+}) {
+  const existing = await prisma.tenant.findUnique({
+    where: { slug: tenantSlug },
+  })
+  if (!existing) {
+    throw new Error('Tienda no encontrada.')
+  }
+
+  const prevTheme =
+    existing.themeConfig && typeof existing.themeConfig === 'object'
+      ? (existing.themeConfig as Record<string, any>)
+      : {}
+
+  const mergedTheme = themeConfig
+    ? {
+        ...prevTheme,
+        ...themeConfig,
+        nightclubName: themeConfig.nightclubName ?? (name ? name.trim() : prevTheme.nightclubName || existing.name),
+      }
+    : prevTheme
+
+  return prisma.tenant.update({
+    where: { id: existing.id },
+    data: {
+      ...(name !== undefined && name.trim() ? { name: name.trim() } : {}),
+      ...(defaultExpirationHour !== undefined && defaultExpirationHour.trim()
+        ? { defaultExpirationHour: defaultExpirationHour.trim() }
+        : {}),
+      ...(mpSellerId !== undefined ? { mpSellerId: mpSellerId ? mpSellerId.trim() : null } : {}),
+      ...(mpPublicKey !== undefined ? { mpPublicKey: mpPublicKey ? mpPublicKey.trim() : null } : {}),
+      ...(mpAccessTokenEnc && mpAccessTokenEnc.trim() !== ''
+        ? { mpAccessTokenEnc: mpAccessTokenEnc.trim() }
+        : {}),
+      ...(mpWebhookSecret && mpWebhookSecret.trim() !== ''
+        ? { mpWebhookSecret: mpWebhookSecret.trim() }
+        : {}),
+      themeConfig: mergedTheme,
     },
   })
 }

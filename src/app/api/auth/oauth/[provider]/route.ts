@@ -53,8 +53,8 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ provider: s
 
     res.cookies.set(OAUTH_STATE_COOKIE, encodeState({ provider, state, nonce, returnTo, tenantSlug }), {
       httpOnly: true,
-      sameSite: provider === 'apple' ? 'none' : 'lax',
-      secure: provider === 'apple' ? true : process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
       path: '/api/auth/oauth',
       maxAge: 10 * 60,
     })

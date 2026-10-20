@@ -22,12 +22,10 @@ export function StoreHeader({ theme, tenantSlug }: StoreHeaderProps) {
   const [authError, setAuthError] = useState<string | null>(null)
 
   useEffect(() => {
-    // Limpiar cualquier almacenamiento viejo de cuentas expuestas
     try {
       localStorage.removeItem('bo_device_social_accounts_v1')
     } catch {}
 
-    // Revisar si venimos de regreso de Google / Apple OAuth con error o éxito
     if (typeof window !== 'undefined') {
       const sp = new URLSearchParams(window.location.search)
       const err = sp.get('auth_error')
@@ -47,7 +45,6 @@ export function StoreHeader({ theme, tenantSlug }: StoreHeaderProps) {
       }
     }
 
-    // Sincronizar sesión y rol en vivo con el servidor (solo por cookie httpOnly)
     fetch('/api/auth/me', { cache: 'no-store' })
       .then((res) => res.json())
       .then((data) => {
@@ -77,27 +74,46 @@ export function StoreHeader({ theme, tenantSlug }: StoreHeaderProps) {
     <>
       <header className="sticky top-0 z-30 bg-obsidian-surface/85 backdrop-blur-md border-b border-obsidian-border px-4 py-3">
         <div className="max-w-md mx-auto flex items-center justify-between gap-2">
-          {/* Marca del boliche */}
+          {/* Marca configurable del boliche */}
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-600 to-pink-600 flex items-center justify-center text-white shadow-md shadow-purple-600/20 shrink-0">
-              <GlassWater className="w-5 h-5" />
-            </div>
+            {theme.logoUrl && theme.logoUrl !== '/favicon.ico' ? (
+              <img
+                src={theme.logoUrl}
+                alt={theme.nightclubName}
+                className="w-10 h-10 rounded-xl object-cover border border-white/15 shrink-0"
+              />
+            ) : (
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-md shrink-0"
+                style={{
+                  background: `linear-gradient(135deg, ${theme.primaryColor || '#8b5cf6'}, ${theme.secondaryColor || '#ec4899'})`,
+                }}
+              >
+                <GlassWater className="w-5 h-5" />
+              </div>
+            )}
             <div className="min-w-0">
               <h1 className="font-extrabold text-sm text-white leading-tight tracking-wide truncate">
                 {theme.nightclubName}
               </h1>
-              <p className="text-[11px] text-purple-400 font-medium truncate">
-                {theme.tagline || 'Barra Rápida QR'}
-              </p>
+              {theme.tagline ? (
+                <p
+                  className="text-[11px] font-medium truncate"
+                  style={{ color: theme.primaryColor || '#a855f7' }}
+                >
+                  {theme.tagline}
+                </p>
+              ) : null}
             </div>
           </div>
 
           {/* Acciones de usuario */}
           <div className="flex items-center gap-1.5 shrink-0">
-            {/* Solo mostrar accesos si el rol verificado por servidor lo permite */}
-            {customer?.role === 'BARTENDER' && (
+            {(customer?.role === 'BARTENDER' ||
+              customer?.role === 'CLUB_ADMIN' ||
+              customer?.role === 'SUPER_ADMIN') && (
               <Link
-                href={`/${customer.tenantSlug || tenantSlug}/barra`}
+                href={`/${tenantSlug}/barra`}
                 className="p-2 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/40 text-purple-300 transition-colors flex items-center gap-1 text-xs font-bold"
                 title="Ir a Barra (Escáner)"
               >
@@ -107,7 +123,7 @@ export function StoreHeader({ theme, tenantSlug }: StoreHeaderProps) {
 
             {(customer?.role === 'CLUB_ADMIN' || customer?.role === 'SUPER_ADMIN') && (
               <Link
-                href={`/${customer.tenantSlug || tenantSlug}/admin`}
+                href={`/${tenantSlug}/admin`}
                 className="p-2 rounded-xl bg-pink-600/20 hover:bg-pink-600/30 border border-pink-500/40 text-pink-300 transition-colors flex items-center gap-1 text-xs font-bold"
                 title="Panel Club Admin"
               >
@@ -141,7 +157,7 @@ export function StoreHeader({ theme, tenantSlug }: StoreHeaderProps) {
                 setAuthError(null)
                 setIsAuthModalOpen(true)
               }}
-              className={`flex items-center gap-1.5 px-2.5 py-2 rounded-xl border text-xs font-semibold transition-all ${
+              className={`flex items-center gap-1.5 px-2.5 py-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
                 customer
                   ? 'bg-purple-500/15 border-purple-500/30 text-purple-200 hover:bg-purple-500/25'
                   : 'bg-white/5 border-white/10 text-white/80 hover:text-white hover:bg-white/10'

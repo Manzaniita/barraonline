@@ -1,7 +1,12 @@
 import React from 'react'
 import Link from 'next/link'
-import { CheckCircle2, Clock, XCircle, ArrowLeft, ShieldCheck, Sparkles, QrCode } from 'lucide-react'
+import { notFound } from 'next/navigation'
+import { prisma } from '@/lib/prisma'
+import { CheckCircle2, Clock, XCircle, ArrowLeft } from 'lucide-react'
 import { TicketQRCard } from '@/components/store/TicketQRCard'
+
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
 
 interface OrderPageProps {
   params: Promise<{
@@ -18,9 +23,32 @@ export default async function OrderPage({ params, searchParams }: OrderPageProps
   const { tenantSlug, orderId } = await params
   const { status, demo } = await searchParams
 
-  const isApproved = status === 'approved' || demo === 'true'
-  const isPending = status === 'pending'
-  const isFailure = status === 'failure'
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: {
+      tenant: {
+        select: {
+          slug: true,
+          name: true,
+          isActive: true,
+          subscriptionStatus: true,
+        },
+      },
+    },
+  })
+
+  if (
+    !order ||
+    !order.tenant ||
+    order.tenant.slug !== tenantSlug ||
+    !order.tenant.isActive ||
+    order.tenant.subscriptionStatus === 'CANCELLED'
+  ) {
+    notFound()
+  }
+
+  const isApproved = status === 'approved' || demo === 'true' || order.status === 'ACTIVE'
+  const isPending = status === 'pending' || (!isApproved && order.status === 'PENDING')
 
   return (
     <div className="min-h-screen bg-[#0a0a0c] text-white flex flex-col justify-between p-4 selection:bg-purple-500 selection:text-white">
@@ -66,7 +94,7 @@ export default async function OrderPage({ params, searchParams }: OrderPageProps
 
           <div className="flex items-center justify-between text-xs pb-3 border-b border-white/5">
             <span className="text-white/40">Boliche</span>
-            <span className="font-semibold text-white capitalize">{tenantSlug.replace(/-/g, ' ')}</span>
+            <span className="font-semibold text-white">{order.tenant.name}</span>
           </div>
 
           <div className="flex items-center justify-between text-xs">
@@ -89,7 +117,7 @@ export default async function OrderPage({ params, searchParams }: OrderPageProps
             <TicketQRCard
               orderId={orderId}
               tenantSlug={tenantSlug}
-              nightclubName={tenantSlug.replace(/-/g, ' ')}
+              nightclubName={order.tenant.name}
               demo={demo === 'true'}
             />
           </div>

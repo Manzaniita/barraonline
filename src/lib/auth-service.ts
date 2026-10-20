@@ -490,6 +490,10 @@ export async function listUsersForAdmin({
     })
     // Un admin de boliche nunca ve a los superadmins
     conditions.push({ role: { not: 'SUPER_ADMIN' } })
+  } else if (tenantSlug) {
+    conditions.push({
+      tenant: { slug: tenantSlug },
+    })
   }
 
   const whereClause: any = conditions.length ? { AND: conditions } : {}
@@ -523,28 +527,103 @@ export async function listUsersForAdmin({
 }
 
 /**
- * Asigna rol (CUSTOMER, BARTENDER, CLUB_ADMIN, SUPER_ADMIN) desde el Admin.
+ * Crea un usuario directamente desde el panel de Administración con rol y tienda asignados.
+ */
+export async function createUserFromAdmin({
+  fullName,
+  email,
+  phone,
+  dni,
+  password,
+  role = 'CUSTOMER',
+  tenantId,
+  tenantSlug,
+}: {
+  fullName: string
+  email?: string | null
+  phone?: string | null
+  dni?: string | null
+  password: string
+  role?: Role
+  tenantId?: string | null
+  tenantSlug?: string | null
+}): Promise<AuthUser> {
+  const cleanEmail = email?.trim().toLowerCase() || null
+  const cleanPhone = phone?.replace(/\D/g, '') || null
+  const cleanDni = dni?.replace(/\D/g, '') || null
+
+  if (!cleanEmail && !cleanPhone && !cleanDni) {
+    throw new Error('Debés ingresar al menos un correo electrónico, teléfono o DNI.')
+  }
+
+  if (!password || password.trim().length < 4) {
+    throw new Error('La contraseña debe tener al menos 4 caracteres.')
+  }
+
+  let resolvedTenantId: string | null = tenantId !== undefined ? tenantId : null
+  if (!resolvedTenantId && tenantSlug) {
+    const t = await prisma.tenant.findUnique({ where: { slug: tenantSlug } })
+    if (t) resolvedTenantId = t.id
+  }
+
+  if (cleanEmail) {
+    const takenEmail = await prisma.user.findFirst({ where: { email: cleanEmail } })
+    if (takenEmail) {
+      throw new Error('Ya existe un usuario registrado con ese correo electrónico.')
+    }
+  }
+
+  if (cleanDni) {
+    const takenDni = await prisma.user.findFirst({ where: { dni: cleanDni } })
+    if (takenDni) {
+      throw new Error('Ya existe un usuario registrado con ese DNI.')
+    }
+  }
+
+  const passwordHash = hashPassword(password.trim())
+
+  const created = await prisma.user.create({
+    data: {
+      fullName: fullName.trim(),
+      email: cleanEmail,
+      phone: cleanPhone,
+      dni: cleanDni,
+      passwordHash,
+      authProvider: cleanEmail ? 'email' : 'phone',
+      role,
+      tenantId: resolvedTenantId,
+    },
+    include: { tenant: true },
+  })
+
+  return toAuthUser(created)
+}
+
+/**
+ * Asigna rol (CUSTOMER, BARTENDER, CLUB_ADMIN, SUPER_ADMIN) y/o tienda desde el Admin.
  */
 export async function updateUserRoleFromAdmin({
   userId,
   role,
+  tenantId,
   tenantSlug,
 }: {
   userId: string
-  role: Role
+  role?: Role
+  tenantId?: string | null
   tenantSlug?: string
 }) {
-  let tenantId: string | undefined = undefined
-  if (tenantSlug) {
+  let resolvedTenantId: string | null | undefined = tenantId
+  if (resolvedTenantId === undefined && tenantSlug) {
     const t = await prisma.tenant.findUnique({ where: { slug: tenantSlug } })
-    if (t) tenantId = t.id
+    if (t) resolvedTenantId = t.id
   }
 
   const updated = await prisma.user.update({
     where: { id: userId },
     data: {
-      role,
-      ...(tenantId ? { tenantId } : {}),
+      ...(role !== undefined ? { role } : {}),
+      ...(resolvedTenantId !== undefined ? { tenantId: resolvedTenantId } : {}),
     },
     include: { tenant: true },
   })

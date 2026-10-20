@@ -32,6 +32,12 @@ import {
   Zap,
   Users,
   UserCheck,
+  Trash2,
+  Settings,
+  Palette,
+  CreditCard,
+  Image as ImageIcon,
+  X,
 } from 'lucide-react'
 import { ClubNightMetrics, ProductPerformance } from '@/lib/admin-service'
 import { RoleGuard } from '@/components/auth/RoleGuard'
@@ -39,21 +45,61 @@ import { UsersRoleManager } from '@/components/admin/UsersRoleManager'
 
 export default function ClubAdminPage() {
   const params = useParams()
-  const tenantSlug = typeof params?.tenantSlug === 'string' ? params.tenantSlug : 'demo-club'
+  const tenantSlug = typeof params?.tenantSlug === 'string' ? params.tenantSlug : ''
 
   const [metrics, setMetrics] = useState<ClubNightMetrics | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const [activeTab, setActiveTab] = useState<'catalog' | 'breakages' | 'orders' | 'users'>('catalog')
+  const [activeTab, setActiveTab] = useState<'catalog' | 'breakages' | 'orders' | 'users' | 'settings'>('catalog')
   const [searchQuery, setSearchQuery] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('ALL')
   const [updatingProductId, setUpdatingProductId] = useState<string | null>(null)
 
-  // Modal para editar producto
+  // Modal para crear producto nuevo
+  const [showCreateProductModal, setShowCreateProductModal] = useState(false)
+  const [newProdName, setNewProdName] = useState('')
+  const [newProdCategory, setNewProdCategory] = useState('Tragos')
+  const [newProdDescription, setNewProdDescription] = useState('')
+  const [newProdPrice, setNewProdPrice] = useState<number>(5000)
+  const [newProdStock, setNewProdStock] = useState<number>(100)
+  const [newProdImageUrl, setNewProdImageUrl] = useState('')
+  const [newProdDeadline, setNewProdDeadline] = useState('')
+  const [newProdIsActive, setNewProdIsActive] = useState(true)
+  const [creatingProduct, setCreatingProduct] = useState(false)
+
+  // Modal para editar producto completo
   const [editingProduct, setEditingProduct] = useState<ProductPerformance | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editCategory, setEditCategory] = useState('')
+  const [editDescription, setEditDescription] = useState('')
   const [editPrice, setEditPrice] = useState<number>(0)
   const [editStock, setEditStock] = useState<number>(0)
+  const [editImageUrl, setEditImageUrl] = useState('')
+  const [editDeadline, setEditDeadline] = useState('')
+  const [editIsActive, setEditIsActive] = useState(true)
   const [savingEdit, setSavingEdit] = useState(false)
+
+  // Modal para eliminar producto
+  const [deletingProduct, setDeletingProduct] = useState<ProductPerformance | null>(null)
+  const [deletingProdLoading, setDeletingProdLoading] = useState(false)
+
+  // Configuración editable de la tienda
+  const [storeName, setStoreName] = useState('')
+  const [storeNightclubName, setStoreNightclubName] = useState('')
+  const [storeTagline, setStoreTagline] = useState('')
+  const [storeSearchPlaceholder, setStoreSearchPlaceholder] = useState('')
+  const [storeLogoUrl, setStoreLogoUrl] = useState('')
+  const [storePrimaryColor, setStorePrimaryColor] = useState('#9333ea')
+  const [storeSecondaryColor, setStoreSecondaryColor] = useState('#ec4899')
+  const [storeBgColor, setStoreBgColor] = useState('#0a0a0c')
+  const [storeCardColor, setStoreCardColor] = useState('#12121a')
+  const [storeExpirationHour, setStoreExpirationHour] = useState('07:00')
+  const [storeMpSellerId, setStoreMpSellerId] = useState('')
+  const [storeMpPublicKey, setStoreMpPublicKey] = useState('')
+  const [storeMpAccessToken, setStoreMpAccessToken] = useState('')
+  const [storeMpWebhookSecret, setStoreMpWebhookSecret] = useState('')
+  const [savingSettings, setSavingSettings] = useState(false)
+  const [settingsInitialized, setSettingsInitialized] = useState(false)
 
   // Modal para registrar rotura
   const [showBreakageModal, setShowBreakageModal] = useState(false)
@@ -81,6 +127,22 @@ export default function ClubAdminPage() {
       const data = await res.json()
       if (data.success && data.metrics) {
         setMetrics(data.metrics)
+        if (!settingsInitialized && data.metrics.tenantSettings) {
+          const ts = data.metrics.tenantSettings
+          setStoreName(ts.name || '')
+          setStoreNightclubName(ts.themeConfig?.nightclubName || ts.name || '')
+          setStoreTagline(ts.themeConfig?.tagline || '')
+          setStoreSearchPlaceholder(ts.themeConfig?.searchPlaceholder || '')
+          setStoreLogoUrl(ts.themeConfig?.logoUrl || '')
+          setStorePrimaryColor(ts.themeConfig?.primaryColor || '#9333ea')
+          setStoreSecondaryColor(ts.themeConfig?.secondaryColor || '#ec4899')
+          setStoreBgColor(ts.themeConfig?.backgroundColor || '#0a0a0c')
+          setStoreCardColor(ts.themeConfig?.cardBackground || '#12121a')
+          setStoreExpirationHour(ts.defaultExpirationHour || '07:00')
+          setStoreMpSellerId(ts.mpSellerId || '')
+          setStoreMpPublicKey(ts.mpPublicKey || '')
+          setSettingsInitialized(true)
+        }
       } else {
         showToast(data.error || 'No se pudieron cargar las métricas', 'error')
       }
@@ -145,34 +207,173 @@ export default function ClubAdminPage() {
     }
   }
 
-  // Guardar edición de precio y stock
+  // Crear producto nuevo
+  const handleCreateProduct = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newProdName.trim()) {
+      showToast('El nombre del producto es obligatorio', 'error')
+      return
+    }
+
+    setCreatingProduct(true)
+    try {
+      const res = await fetch('/api/admin/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenantSlug,
+          name: newProdName.trim(),
+          category: newProdCategory.trim() || 'Tragos',
+          description: newProdDescription.trim() || null,
+          price: Number(newProdPrice),
+          stockAvailable: Number(newProdStock),
+          imageUrl: newProdImageUrl.trim() || null,
+          redeemDeadlineTime: newProdDeadline.trim() || null,
+          isActive: newProdIsActive,
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        showToast(`Producto "${newProdName}" creado con éxito`)
+        setShowCreateProductModal(false)
+        setNewProdName('')
+        setNewProdDescription('')
+        setNewProdImageUrl('')
+        setNewProdDeadline('')
+        setNewProdPrice(5000)
+        setNewProdStock(100)
+        setNewProdIsActive(true)
+        fetchMetrics()
+      } else {
+        showToast(data.error || 'Error al crear producto', 'error')
+      }
+    } catch {
+      showToast('Error de conexión al crear producto', 'error')
+    } finally {
+      setCreatingProduct(false)
+    }
+  }
+
+  // Abrir modal de edición completa de producto
+  const openEditProductModal = (product: ProductPerformance) => {
+    setEditingProduct(product)
+    setEditName(product.name)
+    setEditCategory(product.category)
+    setEditDescription(product.description || '')
+    setEditPrice(product.price)
+    setEditStock(product.stockAvailable)
+    setEditImageUrl(product.imageUrl || '')
+    setEditDeadline(product.redeemDeadlineTime || '')
+    setEditIsActive(product.isActive)
+  }
+
+  // Guardar edición completa de producto
   const handleSaveProductEdit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!editingProduct) return
 
     setSavingEdit(true)
     try {
-      const res = await fetch('/api/admin/products/toggle', {
-        method: 'POST',
+      const res = await fetch('/api/admin/products', {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           productId: editingProduct.id,
-          price: editPrice,
-          stockAvailable: editStock,
+          tenantSlug,
+          name: editName.trim(),
+          category: editCategory.trim() || 'Tragos',
+          description: editDescription.trim() || null,
+          price: Number(editPrice),
+          stockAvailable: Number(editStock),
+          imageUrl: editImageUrl.trim() || null,
+          redeemDeadlineTime: editDeadline.trim() || null,
+          isActive: editIsActive,
         }),
       })
       const data = await res.json()
       if (data.success) {
-        showToast(`Trago "${editingProduct.name}" actualizado`)
+        showToast(`Producto "${editName}" actualizado`)
         setEditingProduct(null)
         fetchMetrics()
       } else {
-        showToast(data.error || 'Error actualizando', 'error')
+        showToast(data.error || 'Error actualizando producto', 'error')
       }
-    } catch (err) {
+    } catch {
       showToast('Error de conexión', 'error')
     } finally {
       setSavingEdit(false)
+    }
+  }
+
+  // Eliminar producto permanentemente
+  const handleDeleteProduct = async () => {
+    if (!deletingProduct) return
+
+    setDeletingProdLoading(true)
+    try {
+      const res = await fetch(
+        `/api/admin/products?productId=${deletingProduct.id}&tenantSlug=${tenantSlug}`,
+        { method: 'DELETE' }
+      )
+      const data = await res.json()
+      if (data.success) {
+        showToast(`Producto "${deletingProduct.name}" eliminado permanentemente`)
+        setDeletingProduct(null)
+        if (editingProduct?.id === deletingProduct.id) {
+          setEditingProduct(null)
+        }
+        fetchMetrics()
+      } else {
+        showToast(data.error || 'Error al eliminar producto', 'error')
+      }
+    } catch {
+      showToast('Error de conexión al eliminar producto', 'error')
+    } finally {
+      setDeletingProdLoading(false)
+    }
+  }
+
+  // Guardar configuración de la tienda
+  const handleSaveStoreSettings = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSavingSettings(true)
+    try {
+      const res = await fetch('/api/admin/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenantSlug,
+          name: storeName.trim(),
+          defaultExpirationHour: storeExpirationHour.trim() || '07:00',
+          mpSellerId: storeMpSellerId.trim() || null,
+          mpPublicKey: storeMpPublicKey.trim() || null,
+          mpAccessTokenEnc: storeMpAccessToken.trim() || undefined,
+          mpWebhookSecret: storeMpWebhookSecret.trim() || undefined,
+          themeConfig: {
+            nightclubName: storeNightclubName.trim() || storeName.trim(),
+            tagline: storeTagline.trim(),
+            searchPlaceholder: storeSearchPlaceholder.trim(),
+            logoUrl: storeLogoUrl.trim(),
+            primaryColor: storePrimaryColor,
+            secondaryColor: storeSecondaryColor,
+            backgroundColor: storeBgColor,
+            cardBackground: storeCardColor,
+          },
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        showToast('Configuración de la tienda guardada con éxito')
+        setStoreMpAccessToken('')
+        setStoreMpWebhookSecret('')
+        fetchMetrics(true)
+      } else {
+        showToast(data.error || 'Error guardando configuración', 'error')
+      }
+    } catch {
+      showToast('Error de conexión al guardar configuración', 'error')
+    } finally {
+      setSavingSettings(false)
     }
   }
 
@@ -487,7 +688,19 @@ export default function ClubAdminPage() {
               }`}
             >
               <Users className="w-4 h-4" />
-              <span>Empleados & Barra (CRUD)</span>
+              <span>Usuarios & Permisos (CRUD)</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('settings')}
+              className={`px-4 py-2.5 rounded-xl font-bold text-xs tracking-wide transition-all flex items-center gap-2 ${
+                activeTab === 'settings'
+                  ? 'bg-amber-600/20 text-amber-300 border border-amber-500/50 shadow-lg shadow-amber-950/40'
+                  : 'text-gray-400 hover:text-white hover:bg-gray-900/60'
+              }`}
+            >
+              <Settings className="w-4 h-4" />
+              <span>Configuración de Tienda</span>
             </button>
           </div>
         </div>
@@ -495,13 +708,13 @@ export default function ClubAdminPage() {
         {/* CONTENIDO TAB 1: CONTROL DE CARTA EN VIVO */}
         {activeTab === 'catalog' && (
           <div className="space-y-4">
-            {/* Barra de Filtros y Búsqueda */}
+            {/* Barra de Filtros, Búsqueda y Alta de Producto */}
             <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-gray-900/50 p-3 rounded-2xl border border-gray-800">
               <div className="relative flex-1">
                 <Search className="w-4 h-4 text-gray-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
-                  placeholder="Buscar trago por nombre o categoría..."
+                  placeholder="Buscar producto por nombre o categoría..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full bg-gray-950 border border-gray-800 rounded-xl pl-10 pr-4 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 transition-colors"
@@ -533,7 +746,32 @@ export default function ClubAdminPage() {
                   </button>
                 ))}
               </div>
+
+              <button
+                onClick={() => setShowCreateProductModal(true)}
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-purple-900/40 shrink-0 cursor-pointer active:scale-95 transition-all"
+              >
+                <PlusCircle className="w-4 h-4" />
+                <span>Nuevo Producto</span>
+              </button>
             </div>
+
+            {filteredProducts.length === 0 ? (
+              <div className="bg-gray-900/50 border border-gray-800 rounded-2xl p-12 text-center space-y-3">
+                <Wine className="w-10 h-10 text-purple-400 mx-auto opacity-60" />
+                <h3 className="text-base font-bold text-white">No hay productos en esta vista</h3>
+                <p className="text-xs text-gray-400 max-w-sm mx-auto">
+                  Agregá productos a la carta de tu tienda haciendo clic en &ldquo;Nuevo Producto&rdquo;.
+                </p>
+                <button
+                  onClick={() => setShowCreateProductModal(true)}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold"
+                >
+                  <PlusCircle className="w-4 h-4" />
+                  <span>Crear Primer Producto</span>
+                </button>
+              </div>
+            ) : null}
 
             {/* Grid de Tragos */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -621,19 +859,27 @@ export default function ClubAdminPage() {
                     <div className="flex items-center justify-between pt-4 mt-3 border-t border-gray-800/40">
                       <span className="text-xs text-gray-400">
                         Stock disp.: <b className="text-gray-200">{product.stockAvailable}</b>
+                        {product.redeemDeadlineTime ? (
+                          <span className="ml-2 text-amber-400 font-mono">• Promo {product.redeemDeadlineTime}</span>
+                        ) : null}
                       </span>
 
-                      <button
-                        onClick={() => {
-                          setEditingProduct(product)
-                          setEditPrice(product.price)
-                          setEditStock(product.stockAvailable)
-                        }}
-                        className="px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-200 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition-colors border border-gray-700"
-                      >
-                        <Edit2 className="w-3.5 h-3.5 text-purple-400" />
-                        <span>Editar</span>
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => openEditProductModal(product)}
+                          className="px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-200 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition-colors border border-gray-700 cursor-pointer"
+                        >
+                          <Edit2 className="w-3.5 h-3.5 text-purple-400" />
+                          <span>Editar</span>
+                        </button>
+                        <button
+                          onClick={() => setDeletingProduct(product)}
+                          className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 transition-colors cursor-pointer"
+                          title="Eliminar producto permanentemente"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )
@@ -878,68 +1124,608 @@ export default function ClubAdminPage() {
         {activeTab === 'users' && (
           <UsersRoleManager tenantSlug={tenantSlug} allowSuperAdminRole={false} isSuperAdmin={false} />
         )}
+
+        {/* CONTENIDO TAB 5: CONFIGURACIÓN DE LA TIENDA */}
+        {activeTab === 'settings' && (
+          <form
+            onSubmit={handleSaveStoreSettings}
+            className="bg-gray-900/70 border border-gray-800 rounded-3xl p-6 md:p-8 space-y-8 shadow-2xl"
+          >
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-gray-800">
+              <div>
+                <h2 className="text-xl font-black text-white flex items-center gap-2">
+                  <Settings className="w-5 h-5 text-amber-400" />
+                  Configuración Integral de la Tienda
+                </h2>
+                <p className="text-xs text-gray-400 mt-1">
+                  Personalizá nombre, textos, colores, horario de corte de QRs y credenciales de Mercado Pago. Todo es 100% configurable.
+                </p>
+              </div>
+              <button
+                type="submit"
+                disabled={savingSettings}
+                className="px-6 py-3 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white text-xs font-bold shadow-lg shadow-purple-900/40 disabled:opacity-50 cursor-pointer shrink-0"
+              >
+                {savingSettings ? 'Guardando Configuración...' : 'Guardar Configuración'}
+              </button>
+            </div>
+
+            {/* 1. Identidad y Textos */}
+            <div className="space-y-4">
+              <h3 className="text-sm font-bold text-purple-300 uppercase tracking-wider flex items-center gap-2">
+                <Sparkles className="w-4 h-4" />
+                Identidad, Textos y Horario de Cierre
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1.5">
+                    Nombre Comercial de la Tienda *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={storeName}
+                    onChange={(e) => setStoreName(e.target.value)}
+                    placeholder="Ej: Club Crobar"
+                    className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1.5">
+                    Título en Cabecera de Carta
+                  </label>
+                  <input
+                    type="text"
+                    value={storeNightclubName}
+                    onChange={(e) => setStoreNightclubName(e.target.value)}
+                    placeholder="Ej: CROBAR VIP BAR"
+                    className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1.5">
+                    Hora de Expiración de QRs (HH:MM)
+                  </label>
+                  <input
+                    type="time"
+                    value={storeExpirationHour}
+                    onChange={(e) => setStoreExpirationHour(e.target.value)}
+                    className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white font-mono focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1.5">
+                    Subtítulo / Eslogan de Cabecera
+                  </label>
+                  <input
+                    type="text"
+                    value={storeTagline}
+                    onChange={(e) => setStoreTagline(e.target.value)}
+                    placeholder="Ej: Pedí desde tu mesa • Retirá sin fila"
+                    className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1.5">
+                    Placeholder del Buscador
+                  </label>
+                  <input
+                    type="text"
+                    value={storeSearchPlaceholder}
+                    onChange={(e) => setStoreSearchPlaceholder(e.target.value)}
+                    placeholder="Ej: Buscá tu trago, botella o combo..."
+                    className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1.5">
+                    URL de Logo (Opcional)
+                  </label>
+                  <input
+                    type="url"
+                    value={storeLogoUrl}
+                    onChange={(e) => setStoreLogoUrl(e.target.value)}
+                    placeholder="https://.../logo.png"
+                    className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Paleta de Colores Personalizable */}
+            <div className="space-y-4 pt-4 border-t border-gray-800">
+              <h3 className="text-sm font-bold text-pink-300 uppercase tracking-wider flex items-center gap-2">
+                <Palette className="w-4 h-4" />
+                Estética y Colores de la Carta
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1.5">
+                    Color Primario
+                  </label>
+                  <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 rounded-xl p-2">
+                    <input
+                      type="color"
+                      value={storePrimaryColor}
+                      onChange={(e) => setStorePrimaryColor(e.target.value)}
+                      className="w-8 h-8 rounded cursor-pointer bg-transparent border-0"
+                    />
+                    <input
+                      type="text"
+                      value={storePrimaryColor}
+                      onChange={(e) => setStorePrimaryColor(e.target.value)}
+                      className="w-full bg-transparent text-xs font-mono text-white focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1.5">
+                    Color Secundario / Acento
+                  </label>
+                  <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 rounded-xl p-2">
+                    <input
+                      type="color"
+                      value={storeSecondaryColor}
+                      onChange={(e) => setStoreSecondaryColor(e.target.value)}
+                      className="w-8 h-8 rounded cursor-pointer bg-transparent border-0"
+                    />
+                    <input
+                      type="text"
+                      value={storeSecondaryColor}
+                      onChange={(e) => setStoreSecondaryColor(e.target.value)}
+                      className="w-full bg-transparent text-xs font-mono text-white focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1.5">
+                    Fondo General
+                  </label>
+                  <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 rounded-xl p-2">
+                    <input
+                      type="color"
+                      value={storeBgColor}
+                      onChange={(e) => setStoreBgColor(e.target.value)}
+                      className="w-8 h-8 rounded cursor-pointer bg-transparent border-0"
+                    />
+                    <input
+                      type="text"
+                      value={storeBgColor}
+                      onChange={(e) => setStoreBgColor(e.target.value)}
+                      className="w-full bg-transparent text-xs font-mono text-white focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1.5">
+                    Fondo de Tarjetas
+                  </label>
+                  <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 rounded-xl p-2">
+                    <input
+                      type="color"
+                      value={storeCardColor}
+                      onChange={(e) => setStoreCardColor(e.target.value)}
+                      className="w-8 h-8 rounded cursor-pointer bg-transparent border-0"
+                    />
+                    <input
+                      type="text"
+                      value={storeCardColor}
+                      onChange={(e) => setStoreCardColor(e.target.value)}
+                      className="w-full bg-transparent text-xs font-mono text-white focus:outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 3. Credenciales de Mercado Pago */}
+            <div className="space-y-4 pt-4 border-t border-gray-800">
+              <h3 className="text-sm font-bold text-cyan-300 uppercase tracking-wider flex items-center gap-2">
+                <CreditCard className="w-4 h-4" />
+                Integración Mercado Pago (Cobros en la Tienda)
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1.5">
+                    Seller ID / Collector ID
+                  </label>
+                  <input
+                    type="text"
+                    value={storeMpSellerId}
+                    onChange={(e) => setStoreMpSellerId(e.target.value)}
+                    placeholder="Ej: 123456789"
+                    className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white font-mono focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1.5">
+                    Public Key (APP_USR-...)
+                  </label>
+                  <input
+                    type="text"
+                    value={storeMpPublicKey}
+                    onChange={(e) => setStoreMpPublicKey(e.target.value)}
+                    placeholder="APP_USR-..."
+                    className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white font-mono focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1.5">
+                    Access Token {metrics?.tenantSettings?.hasMpAccessToken ? '(Configurado ✓ - dejá vacío para mantener)' : ''}
+                  </label>
+                  <input
+                    type="password"
+                    value={storeMpAccessToken}
+                    onChange={(e) => setStoreMpAccessToken(e.target.value)}
+                    placeholder="APP_USR-... (Nuevo Access Token)"
+                    className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white font-mono focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1.5">
+                    Webhook Secret {metrics?.tenantSettings?.hasMpWebhookSecret ? '(Configurado ✓ - dejá vacío para mantener)' : ''}
+                  </label>
+                  <input
+                    type="password"
+                    value={storeMpWebhookSecret}
+                    onChange={(e) => setStoreMpWebhookSecret(e.target.value)}
+                    placeholder="Clave secreta de Webhook (Opcional)"
+                    className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white font-mono focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+              </div>
+            </div>
+          </form>
+        )}
       </main>
 
-      {/* MODAL: EDITAR PRECIO Y STOCK DE PRODUCTO */}
-      {editingProduct && (
+      {/* MODAL: CREAR NUEVO PRODUCTO */}
+      {showCreateProductModal && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-gray-900 border border-purple-500/30 rounded-3xl p-6 max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-150">
-            <h3 className="text-xl font-bold text-white mb-1">
-              Editar "{editingProduct.name}"
-            </h3>
-            <p className="text-xs text-gray-400 mb-6">
-              Categoría: <span className="text-purple-400">{editingProduct.category}</span>
+          <div className="bg-gray-900 border border-purple-500/40 rounded-3xl p-6 max-w-lg w-full shadow-2xl max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-150 relative">
+            <button
+              onClick={() => setShowCreateProductModal(false)}
+              className="absolute top-4 right-4 p-2 rounded-full bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <h3 className="text-xl font-black text-white mb-1">Crear Nuevo Producto</h3>
+            <p className="text-xs text-gray-400 mb-5">
+              Agregá una bebida, botella o combo configurable a la carta de tu tienda.
             </p>
 
-            <form onSubmit={handleSaveProductEdit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-2">
-                  Precio de Venta ($ ARS)
-                </label>
-                <div className="relative">
-                  <DollarSign className="w-4 h-4 text-gray-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <form onSubmit={handleCreateProduct} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-gray-300 uppercase mb-1">
+                    Nombre del Producto *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newProdName}
+                    onChange={(e) => setNewProdName(e.target.value)}
+                    placeholder="Ej: Gin Tonic Beefeater 750ml"
+                    className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 uppercase mb-1">
+                    Categoría *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    list="existing-categories-list"
+                    value={newProdCategory}
+                    onChange={(e) => setNewProdCategory(e.target.value)}
+                    placeholder="Ej: Tragos, Botellas, Cervezas..."
+                    className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500"
+                  />
+                  <datalist id="existing-categories-list">
+                    {uniqueCategories.map((c) => (
+                      <option key={c} value={c} />
+                    ))}
+                  </datalist>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 uppercase mb-1">
+                    Hora Límite Promo (Opcional)
+                  </label>
+                  <input
+                    type="time"
+                    value={newProdDeadline}
+                    onChange={(e) => setNewProdDeadline(e.target.value)}
+                    className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white font-mono focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 uppercase mb-1">
+                    Precio ($ ARS) *
+                  </label>
                   <input
                     type="number"
-                    min="1"
+                    min="0"
                     required
-                    value={editPrice}
-                    onChange={(e) => setEditPrice(Number(e.target.value))}
-                    className="w-full bg-gray-950 border border-gray-800 rounded-xl pl-10 pr-4 py-2.5 text-white font-mono text-base focus:outline-none focus:border-purple-500"
+                    value={newProdPrice}
+                    onChange={(e) => setNewProdPrice(Number(e.target.value))}
+                    className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white font-mono focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 uppercase mb-1">
+                    Stock Disponible *
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    required
+                    value={newProdStock}
+                    onChange={(e) => setNewProdStock(Number(e.target.value))}
+                    className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white font-mono focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-gray-300 uppercase mb-1">
+                    Descripción / Detalle
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={newProdDescription}
+                    onChange={(e) => setNewProdDescription(e.target.value)}
+                    placeholder="Ej: Vaso grande con hielo en rocas y rodaja de limón..."
+                    className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-gray-300 uppercase mb-1">
+                    URL de Imagen (Opcional)
+                  </label>
+                  <input
+                    type="url"
+                    value={newProdImageUrl}
+                    onChange={(e) => setNewProdImageUrl(e.target.value)}
+                    placeholder="https://.../imagen-trago.jpg"
+                    className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500"
                   />
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-2">
-                  Stock Disponible (Unidades)
-                </label>
+              <label className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer pt-1">
                 <input
-                  type="number"
-                  min="0"
-                  required
-                  value={editStock}
-                  onChange={(e) => setEditStock(Number(e.target.value))}
-                  className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-white font-mono text-base focus:outline-none focus:border-purple-500"
+                  type="checkbox"
+                  checked={newProdIsActive}
+                  onChange={(e) => setNewProdIsActive(e.target.checked)}
+                  className="rounded border-gray-700 bg-gray-950 text-purple-600 focus:ring-purple-500"
                 />
-              </div>
+                <span>Publicar inmediatamente activo en la carta</span>
+              </label>
 
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-800">
                 <button
                   type="button"
-                  onClick={() => setEditingProduct(null)}
+                  onClick={() => setShowCreateProductModal(false)}
                   className="px-4 py-2.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-semibold"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  disabled={savingEdit}
+                  disabled={creatingProduct}
                   className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 text-white text-xs font-bold disabled:opacity-50"
                 >
-                  {savingEdit ? 'Guardando...' : 'Guardar Cambios'}
+                  {creatingProduct ? 'Creando...' : 'Crear Producto'}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EDITAR PRODUCTO COMPLETO */}
+      {editingProduct && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-gray-900 border border-purple-500/30 rounded-3xl p-6 max-w-lg w-full shadow-2xl max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-150 relative">
+            <button
+              onClick={() => setEditingProduct(null)}
+              className="absolute top-4 right-4 p-2 rounded-full bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <h3 className="text-xl font-bold text-white mb-1">
+              Editar Producto
+            </h3>
+            <p className="text-xs text-gray-400 mb-5">
+              Modificá cualquier campo del producto o eliminalo de la carta.
+            </p>
+
+            <form onSubmit={handleSaveProductEdit} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-gray-300 uppercase mb-1">
+                    Nombre del Producto *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 uppercase mb-1">
+                    Categoría *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    list="existing-categories-list"
+                    value={editCategory}
+                    onChange={(e) => setEditCategory(e.target.value)}
+                    className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 uppercase mb-1">
+                    Hora Límite Promo (Opcional)
+                  </label>
+                  <input
+                    type="time"
+                    value={editDeadline}
+                    onChange={(e) => setEditDeadline(e.target.value)}
+                    className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white font-mono focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 uppercase mb-1">
+                    Precio de Venta ($ ARS) *
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    required
+                    value={editPrice}
+                    onChange={(e) => setEditPrice(Number(e.target.value))}
+                    className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-white font-mono text-sm focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 uppercase mb-1">
+                    Stock Disponible *
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    required
+                    value={editStock}
+                    onChange={(e) => setEditStock(Number(e.target.value))}
+                    className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-white font-mono text-sm focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-gray-300 uppercase mb-1">
+                    Descripción / Detalle
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={editDescription}
+                    onChange={(e) => setEditDescription(e.target.value)}
+                    className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-gray-300 uppercase mb-1">
+                    URL de Imagen (Opcional)
+                  </label>
+                  <input
+                    type="url"
+                    value={editImageUrl}
+                    onChange={(e) => setEditImageUrl(e.target.value)}
+                    placeholder="https://.../imagen.jpg"
+                    className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+              </div>
+
+              <label className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer pt-1">
+                <input
+                  type="checkbox"
+                  checked={editIsActive}
+                  onChange={(e) => setEditIsActive(e.target.checked)}
+                  className="rounded border-gray-700 bg-gray-950 text-purple-600 focus:ring-purple-500"
+                />
+                <span>Producto activo y visible en la carta</span>
+              </label>
+
+              <div className="flex items-center justify-between gap-3 pt-4 border-t border-gray-800">
+                <button
+                  type="button"
+                  onClick={() => setDeletingProduct(editingProduct)}
+                  className="px-3.5 py-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 text-xs font-bold flex items-center gap-1.5"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Eliminar</span>
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingProduct(null)}
+                    className="px-4 py-2.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-semibold"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingEdit}
+                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 text-white text-xs font-bold disabled:opacity-50"
+                  >
+                    {savingEdit ? 'Guardando...' : 'Guardar Cambios'}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: CONFIRMAR ELIMINACIÓN DE PRODUCTO */}
+      {deletingProduct && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-gray-900 border border-rose-500/40 rounded-3xl p-6 max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-150">
+            <div className="w-12 h-12 rounded-2xl bg-rose-500/20 border border-rose-500/30 text-rose-400 flex items-center justify-center mb-4">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <h3 className="text-xl font-black text-white mb-1">
+              ¿Eliminar &ldquo;{deletingProduct.name}&rdquo;?
+            </h3>
+            <p className="text-xs text-gray-300 leading-relaxed mb-6">
+              Este producto se borrará permanentemente de la base de datos y dejará de aparecer en la carta de inmediato.
+            </p>
+            <div className="flex items-center justify-end gap-3">
+              <button
+                type="button"
+                disabled={deletingProdLoading}
+                onClick={() => setDeletingProduct(null)}
+                className="px-4 py-2.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-semibold"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={deletingProdLoading}
+                onClick={handleDeleteProduct}
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 text-white text-xs font-bold disabled:opacity-50"
+              >
+                {deletingProdLoading ? 'Eliminando...' : 'Eliminar Definitivamente'}
+              </button>
+            </div>
           </div>
         </div>
       )}

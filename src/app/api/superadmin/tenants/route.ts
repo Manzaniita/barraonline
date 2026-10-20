@@ -131,6 +131,7 @@ export async function POST(req: NextRequest) {
       mpSellerId,
       mpPublicKey,
       mpAccessTokenEnc,
+      seedSampleProducts = false,
     } = body
 
     if (!name || !slug) {
@@ -182,43 +183,46 @@ export async function POST(req: NextRequest) {
           tagline: tagline || 'Barra Rápida QR',
           plan: plan || 'PRO',
         },
-        // Crear catálogo base inicial para que pueda vender de inmediato
-        products: {
-          create: [
-            {
-              name: 'Fernet Branca con Coca',
-              category: 'Clásicos de Noche',
-              price: 4500,
-              description: 'Vaso 750ml con hielo frappé y Coca-Cola fría',
-              stockAvailable: 300,
-              isActive: true,
-            },
-            {
-              name: 'Gin Tonic Bombay Sapphire',
-              category: 'Coctelería',
-              price: 5200,
-              description: 'Gin Bombay Sapphire, tónica premium y rodaja de pepino/limón',
-              stockAvailable: 200,
-              isActive: true,
-            },
-            {
-              name: 'Cerveza Corona Extra 330ml',
-              category: 'Cervezas',
-              price: 3200,
-              description: 'Cerveza rubia con gajo de lima',
-              stockAvailable: 500,
-              isActive: true,
-            },
-            {
-              name: 'Vodka Skyy + Speed Unlimited',
-              category: 'Promos Barra',
-              price: 4800,
-              description: 'Vodka saborizado o tradicional con energizante Speed',
-              stockAvailable: 350,
-              isActive: true,
-            },
-          ],
-        },
+        ...(seedSampleProducts
+          ? {
+              products: {
+                create: [
+                  {
+                    name: 'Fernet Branca con Coca',
+                    category: 'Clásicos de Noche',
+                    price: 4500,
+                    description: 'Vaso 750ml con hielo frappé y Coca-Cola fría',
+                    stockAvailable: 300,
+                    isActive: true,
+                  },
+                  {
+                    name: 'Gin Tonic Bombay Sapphire',
+                    category: 'Coctelería',
+                    price: 5200,
+                    description: 'Gin Bombay Sapphire, tónica premium y rodaja de pepino/limón',
+                    stockAvailable: 200,
+                    isActive: true,
+                  },
+                  {
+                    name: 'Cerveza Corona Extra 330ml',
+                    category: 'Cervezas',
+                    price: 3200,
+                    description: 'Cerveza rubia con gajo de lima',
+                    stockAvailable: 500,
+                    isActive: true,
+                  },
+                  {
+                    name: 'Vodka Skyy + Speed Unlimited',
+                    category: 'Promos Barra',
+                    price: 4800,
+                    description: 'Vodka saborizado o tradicional con energizante Speed',
+                    stockAvailable: 350,
+                    isActive: true,
+                  },
+                ],
+              },
+            }
+          : {}),
       },
       include: {
         products: true,
@@ -322,6 +326,7 @@ export async function PUT(req: NextRequest) {
       mpSellerId,
       mpPublicKey,
       mpAccessTokenEnc,
+      seedSampleProducts = false,
     } = body
 
     if (!id) {

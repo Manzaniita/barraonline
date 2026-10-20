@@ -3,6 +3,9 @@ import { StoreFrontView } from '@/components/store/StoreFrontView'
 import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
 
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 interface TenantPageProps {
   params: Promise<{
     tenantSlug: string
@@ -15,13 +18,13 @@ export async function generateMetadata({ params }: TenantPageProps): Promise<Met
 
   if (!data) {
     return {
-      title: 'Boliche no encontrado • Barra Online',
+      title: 'Tienda no disponible • Barra Online',
     }
   }
 
   return {
-    title: `${data.name} • Barra Online QR`,
-    description: `Comprá tus tragos online en ${data.name} y canjealos al instante en barra con código QR sin hacer colas.`,
+    title: `${data.themeConfig.nightclubName || data.name} • Barra Online QR`,
+    description: `Comprá tus tragos online en ${data.themeConfig.nightclubName || data.name} y canjealos al instante en barra con código QR sin hacer colas.`,
   }
 }
 

@@ -17,7 +17,7 @@ interface RoleGuardProps {
 
 export function RoleGuard({
   allowedRoles,
-  tenantSlug = 'demo-club',
+  tenantSlug,
   children,
 }: RoleGuardProps) {
   const router = useRouter()
@@ -43,7 +43,7 @@ export function RoleGuard({
             email: data.user.email || undefined,
             phone: data.user.phone || undefined,
             role: data.user.role,
-            tenantSlug: data.user.tenantSlug || tenantSlug,
+            tenantSlug: data.user.tenantSlug || tenantSlug || undefined,
             authProvider: data.user.authProvider,
             hasPassword: data.user.hasPassword,
           }
@@ -59,15 +59,15 @@ export function RoleGuard({
             return
           }
 
-          router.replace(`/${synced.tenantSlug || tenantSlug}`)
+          router.replace(synced.tenantSlug ? `/${synced.tenantSlug}` : '/mi-cuenta')
           return
         }
 
         clearCustomerProfile()
-        router.replace(`/${tenantSlug}`)
+        router.replace(tenantSlug ? `/${tenantSlug}` : '/mi-cuenta')
       } catch {
         if (active) {
-          router.replace(`/${tenantSlug}`)
+          router.replace(tenantSlug ? `/${tenantSlug}` : '/mi-cuenta')
         }
       }
     }

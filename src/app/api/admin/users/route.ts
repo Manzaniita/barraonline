@@ -4,7 +4,7 @@ import {
   updateUserRoleFromAdmin,
   updateUserFromAdmin,
   deleteUserFromAdmin,
-  registerAccount,
+  createUserFromAdmin,
   getUserById,
 } from '@/lib/auth-service'
 import { ADMIN_ROLES, requireApiRole } from '@/lib/session'
@@ -34,6 +34,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       success: true,
       users,
+      viewerRole: auth.user.role,
     })
   } catch (error: any) {
     console.error('[GET /api/admin/users] Error:', error)
@@ -47,20 +48,20 @@ export async function GET(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   try {
     const body = await req.json()
-    const { userId, role, tenantSlug } = body
+    const { userId, role, tenantId, tenantSlug } = body
 
     const auth = await requireApiRole(req, ADMIN_ROLES, tenantSlug)
     if (auth.error) return auth.error
 
-    if (!userId || !role) {
+    if (!userId || (!role && tenantId === undefined && !tenantSlug)) {
       return NextResponse.json(
-        { success: false, error: 'userId y role son obligatorios.' },
+        { success: false, error: 'userId y al menos role o tenantId son obligatorios.' },
         { status: 400 }
       )
     }
 
     const validRoles: Role[] = ['CUSTOMER', 'BARTENDER', 'CLUB_ADMIN', 'SUPER_ADMIN']
-    if (!validRoles.includes(role)) {
+    if (role && !validRoles.includes(role)) {
       return NextResponse.json(
         { success: false, error: 'Rol no válido.' },
         { status: 400 }
@@ -69,21 +70,21 @@ export async function PATCH(req: NextRequest) {
 
     const isSuper = auth.user.role === 'SUPER_ADMIN'
     if (!isSuper) {
-      if (role === 'SUPER_ADMIN' || role === 'CLUB_ADMIN') {
+      if (role === 'SUPER_ADMIN') {
         return NextResponse.json(
           {
             success: false,
-            error: 'No tenés permisos para otorgar rango Administrador. Solo SuperAdmin puede designar administradores.',
+            error: 'Solo un SuperAdmin puede otorgar permisos de SUPER_ADMIN.',
           },
           { status: 403 }
         )
       }
       const targetUser = await getUserById(userId)
-      if (targetUser?.role === 'SUPER_ADMIN' || targetUser?.role === 'CLUB_ADMIN') {
+      if (targetUser?.role === 'SUPER_ADMIN') {
         return NextResponse.json(
           {
             success: false,
-            error: 'No podés modificar los permisos de un Administrador ni quitárselos.',
+            error: 'No podés modificar los permisos de un SuperAdmin.',
           },
           { status: 403 }
         )
@@ -94,7 +95,8 @@ export async function PATCH(req: NextRequest) {
 
     const updated = await updateUserRoleFromAdmin({
       userId,
-      role,
+      role: role as Role | undefined,
+      tenantId: isSuper && tenantId !== undefined ? tenantId : undefined,
       tenantSlug: effectiveTenant,
     })
 
@@ -105,7 +107,7 @@ export async function PATCH(req: NextRequest) {
   } catch (error: any) {
     console.error('[PATCH /api/admin/users] Error:', error)
     return NextResponse.json(
-      { success: false, error: error?.message || 'Error al actualizar el rol del usuario.' },
+      { success: false, error: error?.message || 'Error al actualizar permisos del usuario.' },
       { status: 400 }
     )
   }
@@ -127,16 +129,14 @@ export async function POST(req: NextRequest) {
     }
 
     const isSuper = auth.user.role === 'SUPER_ADMIN'
-    if (!isSuper) {
-      if (role === 'SUPER_ADMIN' || role === 'CLUB_ADMIN') {
-        return NextResponse.json(
-          {
-            success: false,
-            error: 'No tenés permisos para crear cuentas de Administrador. Solo SuperAdmin puede designar administradores.',
-          },
-          { status: 403 }
-        )
-      }
+    if (!isSuper && role === 'SUPER_ADMIN') {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Solo un SuperAdmin puede crear cuentas con rango SUPER_ADMIN.',
+        },
+        { status: 403 }
+      )
     }
 
     let effectiveTenant = isSuper ? tenantSlug : auth.user.tenantSlug || tenantSlug
@@ -145,25 +145,16 @@ export async function POST(req: NextRequest) {
       if (t) effectiveTenant = t.slug
     }
 
-    const createdUser = await registerAccount({
+    const createdUser = await createUserFromAdmin({
       fullName,
       email,
       phone,
       dni,
       password,
+      role: (role as Role) || 'CUSTOMER',
+      tenantId: isSuper ? tenantId : undefined,
       tenantSlug: effectiveTenant,
     })
-
-    // Si se especificó rol o tenantId diferente
-    if ((role && role !== 'CUSTOMER') || tenantId !== undefined) {
-      const withRole = await updateUserFromAdmin({
-        userId: createdUser.id,
-        role: role as Role,
-        tenantId: isSuper ? tenantId : undefined,
-        tenantSlug: effectiveTenant,
-      })
-      return NextResponse.json({ success: true, user: withRole })
-    }
 
     return NextResponse.json({
       success: true,
@@ -207,20 +198,20 @@ export async function PUT(req: NextRequest) {
     }
 
     if (!isSuper) {
-      if (role === 'SUPER_ADMIN' || role === 'CLUB_ADMIN') {
+      if (role === 'SUPER_ADMIN') {
         return NextResponse.json(
           {
             success: false,
-            error: 'No tenés permisos para otorgar rango de Administrador.',
+            error: 'Solo SuperAdmin puede otorgar rango de SUPER_ADMIN.',
           },
           { status: 403 }
         )
       }
-      if (targetUser.role === 'SUPER_ADMIN' || targetUser.role === 'CLUB_ADMIN') {
+      if (targetUser.role === 'SUPER_ADMIN') {
         return NextResponse.json(
           {
             success: false,
-            error: 'No podés modificar a un Administrador ni cambiar sus credenciales. Solo SuperAdmin tiene este permiso.',
+            error: 'No podés modificar a un SuperAdmin.',
           },
           { status: 403 }
         )
@@ -287,16 +278,14 @@ export async function DELETE(req: NextRequest) {
       )
     }
 
-    if (!isSuper) {
-      if (targetUser.role === 'SUPER_ADMIN' || targetUser.role === 'CLUB_ADMIN') {
-        return NextResponse.json(
-          {
-            success: false,
-            error: 'No tenés permisos para eliminar a un Administrador. Solo SuperAdmin puede gestionar administradores.',
-          },
-          { status: 403 }
-        )
-      }
+    if (!isSuper && targetUser.role === 'SUPER_ADMIN') {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'No tenés permisos para eliminar a un SuperAdmin.',
+        },
+        { status: 403 }
+      )
     }
 
     await deleteUserFromAdmin({

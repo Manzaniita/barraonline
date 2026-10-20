@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifySessionToken } from '@/lib/auth-service'
-import { DEFAULT_TENANT_SLUG, SESSION_COOKIE } from '@/lib/session'
+import { SESSION_COOKIE } from '@/lib/session'
 
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl
@@ -10,7 +10,7 @@ export function proxy(req: NextRequest) {
     const token = req.cookies.get(SESSION_COOKIE)?.value
     const decoded = token ? verifySessionToken(token) : null
     if (!decoded?.id) {
-      return NextResponse.redirect(new URL(`/${DEFAULT_TENANT_SLUG}`, req.url))
+      return NextResponse.redirect(new URL('/mi-cuenta', req.url))
     }
     return NextResponse.next()
   }

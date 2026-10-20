@@ -1,6 +1,6 @@
 import { detectInAppBrowser } from '../src/lib/browser-detection'
 import { isValidDni, isValidFullName } from '../src/lib/customer-session'
-import { getTenantAndCatalog, DEMO_TENANT } from '../src/lib/catalog-service'
+import { getTenantAndCatalog } from '../src/lib/catalog-service'
 
 async function runPhase2Verification() {
   console.log('🧪 Iniciando verificación automatizada de FASE 2...')

@@ -14,155 +14,150 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json()
-    const { orderId, tenantSlug = 'demo-club', userDni, customerName, items, totalAmount } = body
+    const { orderId, tenantSlug, userDni, customerName, items, totalAmount } = body
 
-    if (!orderId) {
-      return NextResponse.json({ error: 'orderId es requerido' }, { status: 400 })
+    if (!orderId || !tenantSlug) {
+      return NextResponse.json({ error: 'orderId y tenantSlug son requeridos' }, { status: 400 })
     }
 
-    const cleanDni = userDni ? String(userDni).replace(/\D/g, '') : '42123456'
-    const expiresAtDate = calculateExpirationDate('07:00')
-    const expiresAt = expiresAtDate.toISOString()
+    const cleanDni = userDni ? String(userDni).replace(/\D/g, '') : ''
 
     // 1. Obtener tenant de la base de datos
-    let tenant = null
-    try {
-      tenant = await prisma.tenant.findUnique({
-        where: { slug: tenantSlug },
-        include: { products: true },
-      })
-    } catch (err) {
-      console.warn('[simulate-payment] No se pudo obtener tenant de DB:', err)
+    const tenant = await prisma.tenant.findUnique({
+      where: { slug: tenantSlug },
+      include: { products: true },
+    })
+
+    if (!tenant || !tenant.isActive || tenant.subscriptionStatus === 'CANCELLED') {
+      return NextResponse.json({ error: 'La tienda no existe o está inactiva.' }, { status: 404 })
     }
 
-    const tenantId = tenant ? tenant.id : `tenant-${tenantSlug}`
+    const expiresAtDate = calculateExpirationDate(tenant.defaultExpirationHour || '07:00')
+    const expiresAt = expiresAtDate.toISOString()
+    const tenantId = tenant.id
 
     // 2. Generar el token QR real y firmado criptográficamente con el tenantId real
     const { token, tokenHash } = generateOrderQrToken({
       orderId,
       tenantId,
-      userDni: cleanDni,
+      userDni: cleanDni || undefined,
       expiresAt,
     })
 
     // 3. Persistir o actualizar en base de datos PostgreSQL
     let dbOrder = null
-    if (tenant) {
-      try {
-        const existing = await prisma.order.findUnique({
+    try {
+      const existing = await prisma.order.findUnique({
+        where: { id: orderId },
+        include: {
+          items: { include: { product: true } },
+          user: true,
+        },
+      })
+
+      if (existing) {
+        dbOrder = await prisma.order.update({
           where: { id: orderId },
+          data: {
+            status: 'ACTIVE',
+            mpPaymentId: `sim-pay-${Date.now()}`,
+            qrTokenHash: tokenHash,
+          },
           include: {
             items: { include: { product: true } },
             user: true,
           },
         })
+      } else {
+        if (!items || !Array.isArray(items) || items.length === 0) {
+          return NextResponse.json(
+            { error: 'La orden no existe y no se especificaron productos válidos.' },
+            { status: 400 }
+          )
+        }
 
-        if (existing) {
-          dbOrder = await prisma.order.update({
-            where: { id: orderId },
-            data: {
-              status: 'ACTIVE',
-              mpPaymentId: `sim-pay-${Date.now()}`,
-              qrTokenHash: tokenHash,
-            },
-            include: {
-              items: { include: { product: true } },
-              user: true,
-            },
-          })
-        } else {
-          // Si la orden aún no existía en la DB, buscar o crear el usuario y crear la orden
-          let user = await prisma.user.findFirst({
-            where: { dni: cleanDni },
-          })
-
-          if (!user) {
-            user = await prisma.user.create({
-              data: {
-                tenantId: tenant.id,
-                dni: cleanDni,
-                fullName: customerName || 'Cliente',
-                role: 'CUSTOMER',
-              },
+        let user = cleanDni
+          ? await prisma.user.findFirst({
+              where: { dni: cleanDni },
             })
-          }
+          : null
 
-          // Armar items válidos vinculados a productos de Supabase
-          const prods = tenant.products
-          const fernet = prods.find((p) => p.name.includes('Fernet')) || prods[0]
-          const agua = prods.find((p) => p.name.includes('Agua')) || prods[1] || prods[0]
-
-          interface SimItemInput {
-            productId?: string
-            name?: string
-            unitPrice?: number
-            quantity?: number
-            redeemDeadlineTime?: string
-          }
-
-          const itemsToCreate =
-            items && Array.isArray(items) && items.length > 0
-              ? items.map((it: SimItemInput) => {
-                  const matched =
-                    prods.find((p) => p.id === it.productId) ||
-                    prods.find((p) => p.name.toLowerCase() === (it.name || '').toLowerCase()) ||
-                    prods[0]
-
-                  return {
-                    productId: matched ? matched.id : fernet.id,
-                    productNameSnapshot: it.name || (matched ? matched.name : 'Bebida'),
-                    unitPrice: it.unitPrice || (matched ? Number(matched.price) : 6500),
-                    quantityPurchased: it.quantity || 1,
-                    quantityRedeemed: 0,
-                    redeemDeadlineAt: it.redeemDeadlineTime
-                      ? calculatePromoDeadline(it.redeemDeadlineTime)
-                      : null,
-                  }
-                })
-              : [
-                  {
-                    productId: fernet.id,
-                    productNameSnapshot: fernet.name,
-                    unitPrice: Number(fernet.price),
-                    quantityPurchased: 2,
-                    quantityRedeemed: 0,
-                  },
-                  {
-                    productId: agua.id,
-                    productNameSnapshot: agua.name,
-                    unitPrice: Number(agua.price),
-                    quantityPurchased: 1,
-                    quantityRedeemed: 0,
-                  },
-                ]
-
-          const finalTotal =
-            totalAmount ||
-            itemsToCreate.reduce((sum: number, it: { unitPrice: number; quantityPurchased: number }) => sum + it.unitPrice * it.quantityPurchased, 0)
-
-          dbOrder = await prisma.order.create({
+        if (!user) {
+          user = await prisma.user.create({
             data: {
-              id: orderId,
               tenantId: tenant.id,
-              userId: user.id,
-              status: 'ACTIVE',
-              totalAmount: finalTotal,
-              expiresAt: expiresAtDate,
-              qrTokenHash: tokenHash,
-              mpPaymentId: `sim-pay-${Date.now()}`,
-              items: {
-                create: itemsToCreate,
-              },
-            },
-            include: {
-              items: { include: { product: true } },
-              user: true,
+              dni: cleanDni || null,
+              fullName: customerName || 'Cliente',
+              role: 'CUSTOMER',
             },
           })
         }
-      } catch (err) {
-        console.error('[simulate-payment] Error al guardar/actualizar orden en DB:', err)
+
+        const prods = tenant.products
+        interface SimItemInput {
+          productId?: string
+          name?: string
+          unitPrice?: number
+          quantity?: number
+          redeemDeadlineTime?: string
+        }
+
+        const itemsToCreate = []
+        for (const it of items as SimItemInput[]) {
+          const matched =
+            prods.find((p) => p.id === it.productId) ||
+            prods.find((p) => p.name.toLowerCase() === (it.name || '').toLowerCase())
+
+          if (!matched || !matched.isActive) {
+            return NextResponse.json(
+              { error: `Producto "${it.name || it.productId}" no existe o está inactivo.` },
+              { status: 400 }
+            )
+          }
+
+          itemsToCreate.push({
+            productId: matched.id,
+            productNameSnapshot: matched.name,
+            unitPrice: Number(matched.price),
+            quantityPurchased: Math.max(1, Number(it.quantity) || 1),
+            quantityRedeemed: 0,
+            redeemDeadlineAt: matched.redeemDeadlineTime
+              ? calculatePromoDeadline(matched.redeemDeadlineTime)
+              : null,
+          })
+        }
+
+        const finalTotal =
+          totalAmount ||
+          itemsToCreate.reduce(
+            (sum: number, it: { unitPrice: number; quantityPurchased: number }) =>
+              sum + it.unitPrice * it.quantityPurchased,
+            0
+          )
+
+        dbOrder = await prisma.order.create({
+          data: {
+            id: orderId,
+            tenantId: tenant.id,
+            userId: user.id,
+            status: 'ACTIVE',
+            totalAmount: finalTotal,
+            expiresAt: expiresAtDate,
+            qrTokenHash: tokenHash,
+            mpPaymentId: `sim-pay-${Date.now()}`,
+            items: {
+              create: itemsToCreate,
+            },
+          },
+          include: {
+            items: { include: { product: true } },
+            user: true,
+          },
+        })
       }
+    } catch (err) {
+      console.error('[simulate-payment] Error al guardar/actualizar orden en DB:', err)
+      return NextResponse.json({ error: 'Error al registrar la orden en DB.' }, { status: 500 })
     }
 
     return NextResponse.json({

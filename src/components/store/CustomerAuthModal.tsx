@@ -68,7 +68,7 @@ export function CustomerAuthModal({
 
   const [currentUser, setCurrentUser] = useState<CustomerProfile | null>(null)
   const [loading, setLoading] = useState(false)
-  const [oauthRedirecting, setOauthRedirecting] = useState<'google' | 'apple' | null>(null)
+  const [oauthRedirecting, setOauthRedirecting] = useState<'google' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
 
@@ -171,53 +171,36 @@ export function CustomerAuthModal({
     onSuccess(profile)
   }
 
-  const handleNativeOAuth = async (provider: 'google' | 'apple') => {
+  const handleNativeOAuth = async () => {
     setError(null)
-    setOauthRedirecting(provider)
+    setOauthRedirecting('google')
     const returnTo =
       typeof window !== 'undefined' ? window.location.pathname : `/${tenantSlug}`
 
     try {
-      // 1. Consultar si tiene credenciales oficiales configuradas en .env
-      const checkRes = await fetch(`/api/auth/oauth/${provider}?check=true`)
+      // 1. Consultar si tiene credenciales oficiales configuradas en el servidor
+      const checkRes = await fetch('/api/auth/oauth/google?check=true')
       const checkData = await checkRes.json()
 
       if (checkData?.configured) {
-        // Redirigir al servidor oficial de Google / Apple
-        const url = `/api/auth/oauth/${provider}?returnTo=${encodeURIComponent(
+        // Redirigir directamente al flujo oficial OAuth 2.0 / OpenID Connect de Google
+        const url = `/api/auth/oauth/google?returnTo=${encodeURIComponent(
           returnTo
         )}&tenant=${encodeURIComponent(tenantSlug)}`
         window.location.assign(url)
         return
       }
 
-      // 2. Si no están configuradas las claves en .env, iniciar sesión en 1 clic de forma instantánea
-      const res = await fetch(`/api/auth/oauth/${provider}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          returnTo,
-          tenantSlug,
-          email: provider === 'google' ? 'cliente.google@gmail.com' : 'cliente.apple@icloud.com',
-          fullName: provider === 'google' ? 'Usuario Google' : 'Usuario Apple ID',
-        }),
-      })
-
-      const data = await res.json()
-      if (data.success && data.user) {
-        syncAndFinish(data.user)
-        onClose()
-        return
-      }
+      // 2. Si las credenciales aún no se configuraron en las variables de entorno
+      setOauthRedirecting(null)
+      setError(
+        'El inicio de sesión con Google requiere configurar GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET en las variables de entorno de Vercel.'
+      )
     } catch (err) {
-      console.error('Error en autenticación social:', err)
+      console.error('Error al conectar con el servidor:', err)
+      setOauthRedirecting(null)
+      setError('Error de conexión al iniciar autenticación con Google.')
     }
-
-    // Fallback: Redirección con selector de cuenta
-    const url = `/api/auth/oauth/${provider}?returnTo=${encodeURIComponent(
-      returnTo
-    )}&tenant=${encodeURIComponent(tenantSlug)}`
-    window.location.assign(url)
   }
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -601,55 +584,37 @@ export function CustomerAuthModal({
                 </div>
               )}
 
-              {/* Botones Nativos de Google y Apple OAuth */}
-              <div className="grid grid-cols-2 gap-2.5">
-                <button
-                  type="button"
-                  disabled={Boolean(oauthRedirecting)}
-                  onClick={() => handleNativeOAuth('google')}
-                  className="flex items-center justify-center gap-2 py-3 px-3 rounded-2xl bg-white text-gray-900 hover:bg-gray-100 font-bold text-xs transition-all shadow-md active:scale-95 disabled:opacity-60 cursor-pointer"
-                >
-                  {oauthRedirecting === 'google' ? (
-                    <Loader2 className="w-4 h-4 animate-spin text-gray-900" />
-                  ) : (
-                    <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
-                      <path
-                        fill="#4285F4"
-                        d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"
-                      />
-                      <path
-                        fill="#34A853"
-                        d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.29v3.14C3.26 21.3 7.31 24 12 24z"
-                      />
-                      <path
-                        fill="#FBBC05"
-                        d="M5.28 14.24c-.24-.72-.38-1.49-.38-2.24s.14-1.52.38-2.24V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.99-3.14z"
-                      />
-                      <path
-                        fill="#EA4335"
-                        d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96z"
-                      />
-                    </svg>
-                  )}
-                  <span>{oauthRedirecting === 'google' ? 'Abriendo...' : 'Continuar con Google'}</span>
-                </button>
-
-                <button
-                  type="button"
-                  disabled={Boolean(oauthRedirecting)}
-                  onClick={() => handleNativeOAuth('apple')}
-                  className="flex items-center justify-center gap-2 py-3 px-3 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/20 text-white font-bold text-xs transition-all active:scale-95 disabled:opacity-60 cursor-pointer"
-                >
-                  {oauthRedirecting === 'apple' ? (
-                    <Loader2 className="w-4 h-4 animate-spin text-white" />
-                  ) : (
-                    <svg className="w-4 h-4 fill-current shrink-0" viewBox="0 0 24 24">
-                      <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09l.01-.01zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z" />
-                    </svg>
-                  )}
-                  <span>{oauthRedirecting === 'apple' ? 'Abriendo...' : 'Continuar con Apple'}</span>
-                </button>
-              </div>
+              {/* Botón Nativo Oficial de Google OAuth */}
+              <button
+                type="button"
+                disabled={Boolean(oauthRedirecting)}
+                onClick={handleNativeOAuth}
+                className="w-full flex items-center justify-center gap-3 py-3.5 px-4 rounded-2xl bg-white text-gray-900 hover:bg-gray-100 font-bold text-sm transition-all shadow-md active:scale-[0.98] disabled:opacity-60 cursor-pointer"
+              >
+                {oauthRedirecting === 'google' ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-gray-900" />
+                ) : (
+                  <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
+                    <path
+                      fill="#4285F4"
+                      d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"
+                    />
+                    <path
+                      fill="#34A853"
+                      d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.29v3.14C3.26 21.3 7.31 24 12 24z"
+                    />
+                    <path
+                      fill="#FBBC05"
+                      d="M5.28 14.24c-.24-.72-.38-1.49-.38-2.24s.14-1.52.38-2.24V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.99-3.14z"
+                    />
+                    <path
+                      fill="#EA4335"
+                      d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96z"
+                    />
+                  </svg>
+                )}
+                <span>{oauthRedirecting === 'google' ? 'Abriendo Google...' : 'Continuar con Google'}</span>
+              </button>
 
               {/* Separador elegante */}
               <div className="relative flex py-1 items-center">

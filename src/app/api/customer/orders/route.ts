@@ -11,7 +11,23 @@ export const dynamic = 'force-dynamic'
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}))
-    const { tenantSlug = 'demo-club', orderIds = [], userDni } = body
+    const { tenantSlug, orderIds = [], userDni } = body
+
+    if (tenantSlug) {
+      const tenant = await prisma.tenant.findUnique({
+        where: { slug: tenantSlug },
+        select: { id: true, isActive: true, subscriptionStatus: true },
+      })
+      if (!tenant || !tenant.isActive || tenant.subscriptionStatus === 'CANCELLED') {
+        return NextResponse.json({
+          success: true,
+          tenantDeleted: true,
+          activeOrders: [],
+          historyOrders: [],
+          serverTime: new Date().toISOString(),
+        })
+      }
+    }
 
     // 1. Obtener usuario autenticado si existe sesión
     let sessionUserId: string | null = null

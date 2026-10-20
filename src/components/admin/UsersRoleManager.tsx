@@ -64,6 +64,10 @@ export function UsersRoleManager({
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
+  const [detectedSuperAdmin, setDetectedSuperAdmin] = useState(isSuperAdmin)
+
+  const effectiveIsSuper = isSuperAdmin || detectedSuperAdmin
+  const effectiveAllowSuperRole = allowSuperAdminRole || detectedSuperAdmin
 
   // Modal para crear nueva cuenta
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -109,6 +113,9 @@ export function UsersRoleManager({
       const data = await res.json()
       if (data.success && data.users) {
         setUsers(data.users)
+        if (data.viewerRole === 'SUPER_ADMIN') {
+          setDetectedSuperAdmin(true)
+        }
       } else {
         showToast(data.error || 'Error cargando usuarios', 'error')
       }
@@ -125,8 +132,8 @@ export function UsersRoleManager({
 
   // Abrir modal de edición pre-cargando los datos
   const openEditModal = (u: AdminUserRow) => {
-    if (!isSuperAdmin && (u.role === 'CLUB_ADMIN' || u.role === 'SUPER_ADMIN')) {
-      showToast('Solo SuperAdmin puede editar cuentas de Administrador.', 'error')
+    if (!effectiveIsSuper && u.role === 'SUPER_ADMIN') {
+      showToast('Solo SuperAdmin puede editar cuentas de SuperAdmin.', 'error')
       return
     }
     setEditingUser(u)
@@ -144,8 +151,8 @@ export function UsersRoleManager({
     userId: string,
     newRoleValue: 'CUSTOMER' | 'BARTENDER' | 'CLUB_ADMIN' | 'SUPER_ADMIN'
   ) => {
-    if (!isSuperAdmin && (newRoleValue === 'CLUB_ADMIN' || newRoleValue === 'SUPER_ADMIN')) {
-      showToast('No tenés permisos para otorgar rango de Administrador.', 'error')
+    if (!effectiveIsSuper && newRoleValue === 'SUPER_ADMIN') {
+      showToast('Solo un SuperAdmin puede otorgar rango de SUPER_ADMIN.', 'error')
       return
     }
     setUpdatingUserId(userId)
@@ -175,10 +182,56 @@ export function UsersRoleManager({
     }
   }
 
+  // Cambio rápido de boliche asignado desde la tabla (para SuperAdmin)
+  const handleTenantAssignChange = async (userId: string, targetTenantId: string) => {
+    setUpdatingUserId(userId)
+    try {
+      const res = await fetch('/api/admin/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId,
+          tenantId: targetTenantId || null,
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        const matchedTenant = availableTenants.find((t) => t.id === targetTenantId)
+        setUsers((prev) =>
+          prev.map((u) =>
+            u.id === userId
+              ? {
+                  ...u,
+                  tenantId: targetTenantId || null,
+                  tenantName: matchedTenant ? matchedTenant.name : null,
+                  tenantSlug: matchedTenant ? matchedTenant.slug : null,
+                }
+              : u
+          )
+        )
+        showToast(
+          matchedTenant
+            ? `Usuario asignado a ${matchedTenant.name}`
+            : 'Usuario configurado como Global / Sin tienda fija'
+        )
+      } else {
+        showToast(data.error || 'No se pudo cambiar la tienda asignada', 'error')
+      }
+    } catch {
+      showToast('Error de conexión', 'error')
+    } finally {
+      setUpdatingUserId(null)
+    }
+  }
+
   // Guardar creación de usuario
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newName || !newPassword) return
+    if (!newEmail.trim() && !newPhone.trim() && !newDni.trim()) {
+      showToast('Ingresá al menos correo electrónico, teléfono o DNI.', 'error')
+      return
+    }
 
     setCreating(true)
     try {
@@ -397,7 +450,7 @@ export function UsersRoleManager({
               <tbody className="divide-y divide-gray-800/60">
                 {users.map((u) => {
                   const isTargetAdmin = u.role === 'CLUB_ADMIN' || u.role === 'SUPER_ADMIN'
-                  const isLockedForViewer = !isSuperAdmin && isTargetAdmin
+                  const isLockedForViewer = !effectiveIsSuper && u.role === 'SUPER_ADMIN'
 
                   return (
                     <tr key={u.id} className="text-gray-300 hover:bg-gray-800/30 transition-colors">
@@ -425,7 +478,21 @@ export function UsersRoleManager({
                       </td>
 
                       <td className="py-3.5 px-4 text-xs">
-                        {u.tenantName ? (
+                        {effectiveIsSuper && availableTenants.length > 0 ? (
+                          <select
+                            disabled={updatingUserId === u.id}
+                            value={u.tenantId || ''}
+                            onChange={(e) => handleTenantAssignChange(u.id, e.target.value)}
+                            className="bg-gray-900 border border-gray-700 hover:border-purple-500/50 text-purple-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none cursor-pointer"
+                          >
+                            <option value="">🌐 Global / Sin tienda</option>
+                            {availableTenants.map((t) => (
+                              <option key={t.id} value={t.id}>
+                                🏪 {t.name} (/{t.slug})
+                              </option>
+                            ))}
+                          </select>
+                        ) : u.tenantName ? (
                           <span className="px-2.5 py-1 rounded-lg bg-purple-950/40 border border-purple-800/40 text-purple-300 font-medium">
                             {u.tenantName}
                           </span>
@@ -442,11 +509,11 @@ export function UsersRoleManager({
                       <td className="py-3.5 px-4">
                         {isLockedForViewer ? (
                           <div
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-pink-950/40 text-pink-300 border border-pink-800/50 cursor-not-allowed"
-                            title="Cuenta de Administrador asignada por SuperAdmin (Protegida)"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-cyan-950/40 text-cyan-300 border border-cyan-800/50 cursor-not-allowed"
+                            title="Cuenta de SuperAdmin"
                           >
-                            <Lock className="w-3.5 h-3.5 text-pink-400" />
-                            <span>{u.role === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : 'CLUB_ADMIN'}</span>
+                            <Lock className="w-3.5 h-3.5 text-cyan-400" />
+                            <span>SUPER_ADMIN</span>
                           </div>
                         ) : (
                           <select
@@ -472,12 +539,10 @@ export function UsersRoleManager({
                             <option value="BARTENDER" className="bg-gray-900 text-purple-300">
                               🍸 BARTENDER (Barra)
                             </option>
-                            {isSuperAdmin && (
-                              <option value="CLUB_ADMIN" className="bg-gray-900 text-pink-300">
-                                ⚙️ CLUB_ADMIN (Admin Club)
-                              </option>
-                            )}
-                            {isSuperAdmin && allowSuperAdminRole && (
+                            <option value="CLUB_ADMIN" className="bg-gray-900 text-pink-300">
+                              ⚙️ CLUB_ADMIN (Admin Tienda)
+                            </option>
+                            {effectiveIsSuper && effectiveAllowSuperRole && (
                               <option value="SUPER_ADMIN" className="bg-gray-900 text-cyan-300">
                                 🛡️ SUPER_ADMIN (Plataforma)
                               </option>
@@ -504,8 +569,8 @@ export function UsersRoleManager({
 
                             <button
                               onClick={() => {
-                                if (!isSuperAdmin && isTargetAdmin) {
-                                  showToast('Solo SuperAdmin puede eliminar a un Administrador.', 'error')
+                                if (!effectiveIsSuper && u.role === 'SUPER_ADMIN') {
+                                  showToast('Solo SuperAdmin puede eliminar a un SuperAdmin.', 'error')
                                   return
                                 }
                                 setDeletingUser(u)
@@ -647,10 +712,8 @@ export function UsersRoleManager({
                   >
                     <option value="BARTENDER">🍸 Bartender (Barra)</option>
                     <option value="CUSTOMER">👤 Cliente / Personal General</option>
-                    {isSuperAdmin && (
-                      <option value="CLUB_ADMIN">⚙️ Admin del Boliche</option>
-                    )}
-                    {isSuperAdmin && allowSuperAdminRole && (
+                    <option value="CLUB_ADMIN">⚙️ Admin de la Tienda</option>
+                    {effectiveIsSuper && effectiveAllowSuperRole && (
                       <option value="SUPER_ADMIN">🛡️ SuperAdmin</option>
                     )}
                   </select>
@@ -804,10 +867,8 @@ export function UsersRoleManager({
                   >
                     <option value="CUSTOMER">👤 Cliente / Personal General</option>
                     <option value="BARTENDER">🍸 Bartender (Barra)</option>
-                    {isSuperAdmin && (
-                      <option value="CLUB_ADMIN">⚙️ Admin del Club</option>
-                    )}
-                    {isSuperAdmin && allowSuperAdminRole && (
+                    <option value="CLUB_ADMIN">⚙️ Admin de la Tienda</option>
+                    {effectiveIsSuper && effectiveAllowSuperRole && (
                       <option value="SUPER_ADMIN">🛡️ SuperAdmin</option>
                     )}
                   </select>

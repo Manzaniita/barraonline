@@ -29,7 +29,7 @@ import {
 
 export default function MiCuentaPage() {
   const params = useParams()
-  const tenantSlug = typeof params?.tenantSlug === 'string' ? params.tenantSlug : 'demo-club'
+  const tenantSlug = typeof params?.tenantSlug === 'string' ? params.tenantSlug : ''
 
   const [user, setUser] = useState<CustomerProfile | null>(null)
   const [loading, setLoading] = useState(true)
@@ -175,7 +175,7 @@ export default function MiCuentaPage() {
         <div className="max-w-2xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Link
-              href={`/${tenantSlug}`}
+              href={user?.tenantSlug || tenantSlug ? `/${user?.tenantSlug || tenantSlug}` : '/'}
               className="p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/80"
             >
               <ArrowLeft className="w-4 h-4" />
@@ -208,7 +208,7 @@ export default function MiCuentaPage() {
             </div>
             <h2 className="text-xl font-black">Iniciá Sesión o Creá tu Cuenta</h2>
             <p className="text-sm text-white/60 max-w-md mx-auto">
-              Ingresá gratis con Google, Apple, tu correo electrónico o tu teléfono celular para gestionar tus compras, tu clave y tus permisos.
+              Ingresá gratis con Google, tu correo electrónico, teléfono celular o DNI para gestionar tus compras, tu clave y tus permisos.
             </p>
             <button
               onClick={() => setIsAuthModalOpen(true)}
@@ -239,35 +239,39 @@ export default function MiCuentaPage() {
               </div>
 
               <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-                <Link
-                  href={`/${tenantSlug}/mis-tragos`}
-                  className="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-bold flex items-center gap-1.5"
-                >
-                  <QrCode className="w-4 h-4 text-purple-400" />
-                  <span>Mis Tragos</span>
-                </Link>
-
-                {(user.role === 'BARTENDER' ||
-                  user.role === 'CLUB_ADMIN' ||
-                  user.role === 'SUPER_ADMIN') && (
+                {(user.tenantSlug || tenantSlug) && (
                   <Link
-                    href={`/${tenantSlug}/barra`}
-                    className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold flex items-center gap-1.5"
+                    href={`/${user.tenantSlug || tenantSlug}/mis-tragos`}
+                    className="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-bold flex items-center gap-1.5"
                   >
-                    <Wine className="w-4 h-4" />
-                    <span>Barra</span>
+                    <QrCode className="w-4 h-4 text-purple-400" />
+                    <span>Mis Tragos</span>
                   </Link>
                 )}
 
-                {(user.role === 'CLUB_ADMIN' || user.role === 'SUPER_ADMIN') && (
-                  <Link
-                    href={`/${tenantSlug}/admin`}
-                    className="px-3.5 py-2 rounded-xl bg-pink-600 hover:bg-pink-500 text-white text-xs font-bold flex items-center gap-1.5"
-                  >
-                    <Settings className="w-4 h-4" />
-                    <span>Club Admin</span>
-                  </Link>
-                )}
+                {(user.tenantSlug || tenantSlug) &&
+                  (user.role === 'BARTENDER' ||
+                    user.role === 'CLUB_ADMIN' ||
+                    user.role === 'SUPER_ADMIN') && (
+                    <Link
+                      href={`/${user.tenantSlug || tenantSlug}/barra`}
+                      className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold flex items-center gap-1.5"
+                    >
+                      <Wine className="w-4 h-4" />
+                      <span>Barra</span>
+                    </Link>
+                  )}
+
+                {(user.tenantSlug || tenantSlug) &&
+                  (user.role === 'CLUB_ADMIN' || user.role === 'SUPER_ADMIN') && (
+                    <Link
+                      href={`/${user.tenantSlug || tenantSlug}/admin`}
+                      className="px-3.5 py-2 rounded-xl bg-pink-600 hover:bg-pink-500 text-white text-xs font-bold flex items-center gap-1.5"
+                    >
+                      <Settings className="w-4 h-4" />
+                      <span>Club Admin</span>
+                    </Link>
+                  )}
 
                 {user.role === 'SUPER_ADMIN' && (
                   <Link

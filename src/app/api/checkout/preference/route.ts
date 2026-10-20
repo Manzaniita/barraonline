@@ -32,30 +32,46 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // 1. Obtener información del tenant y catálogo
-    const tenantData = await getTenantAndCatalog(tenantSlug)
-    if (!tenantData) {
+    // 1. Obtener información del tenant y catálogo desde PostgreSQL
+    const dbTenant = await prisma.tenant.findUnique({
+      where: { slug: tenantSlug },
+      include: { products: true },
+    })
+
+    if (!dbTenant || !dbTenant.isActive || dbTenant.subscriptionStatus === 'CANCELLED') {
       return NextResponse.json(
-        { error: 'Boliche no encontrado.' },
+        { error: 'La tienda no existe o no se encuentra disponible.' },
         { status: 404 }
       )
     }
 
-    // 2. Validar precios e ítems contra el catálogo del servidor (previene manipulación de precios)
+    // 2. Validar precios, disponibilidad y stock contra el catálogo real del servidor
     const verifiedItems: CheckoutItemInput[] = []
     let totalAmount = 0
 
     for (const item of items) {
-      const product = tenantData.products.find((p) => p.id === item.productId)
+      const product = dbTenant.products.find((p) => p.id === item.productId)
       if (!product || !product.isActive) {
         return NextResponse.json(
-          { error: `El producto ${item.productId} no está disponible.` },
+          { error: `El producto solicitado ya no se encuentra disponible en la carta.` },
           { status: 400 }
         )
       }
 
       const qty = Math.max(1, Math.floor(Number(item.quantity) || 1))
-      const unitPrice = product.price
+      if (product.stockAvailable < qty) {
+        return NextResponse.json(
+          {
+            error:
+              product.stockAvailable <= 0
+                ? `"${product.name}" se quedó sin stock disponible.`
+                : `Solo quedan ${product.stockAvailable} unidades disponibles de "${product.name}".`,
+          },
+          { status: 400 }
+        )
+      }
+
+      const unitPrice = Number(product.price)
       totalAmount += unitPrice * qty
 
       verifiedItems.push({
@@ -68,75 +84,69 @@ export async function POST(req: NextRequest) {
     }
 
     const orderId = crypto.randomUUID()
-    const expiresAt = calculateExpirationDate('07:00')
+    const expiresAt = calculateExpirationDate(dbTenant.defaultExpirationHour || '07:00')
     const protocol = req.headers.get('x-forwarded-proto') || 'http'
     const host = req.headers.get('host') || 'localhost:3000'
     const baseUrl = `${protocol}://${host}`
 
-    // 3. Intentar persistencia en base de datos PostgreSQL si está conectada
-    let dbTenant: TenantWithProducts | null = null
+    // 3. Persistir orden y descontar stock en transacción en PostgreSQL
     try {
-      dbTenant = await prisma.tenant.findUnique({
-        where: { slug: tenantSlug },
-        include: { products: true },
-      })
+      const cleanDni = (customer.dni || '').replace(/\D/g, '') || null
+      const cleanEmail = customer.email?.trim().toLowerCase() || null
 
-      if (dbTenant) {
-        const cleanDni = (customer.dni || '').replace(/\D/g, '') || null
-        const cleanEmail = customer.email?.trim().toLowerCase() || null
+      let user = null
+      if (customer.userId) {
+        user = await prisma.user.findUnique({ where: { id: customer.userId } })
+      }
+      if (!user && cleanEmail) {
+        user = await prisma.user.findFirst({ where: { email: cleanEmail } })
+      }
+      if (!user && cleanDni) {
+        user = await prisma.user.findFirst({ where: { dni: cleanDni } })
+      }
 
-        // Buscar usuario existente por userId, email o DNI
-        let user = null
-        if (customer.userId) {
-          user = await prisma.user.findUnique({ where: { id: customer.userId } })
-        }
-        if (!user && cleanEmail) {
-          user = await prisma.user.findFirst({ where: { email: cleanEmail } })
-        }
-        if (!user && cleanDni) {
-          user = await prisma.user.findFirst({ where: { dni: cleanDni } })
-        }
+      if (!user) {
+        user = await prisma.user.create({
+          data: {
+            tenantId: dbTenant.id,
+            dni: cleanDni,
+            email: cleanEmail,
+            fullName: customer.fullName,
+            phone: customer.phone || null,
+            role: 'CUSTOMER',
+          },
+        })
+      } else if (customer.fullName && user.fullName !== customer.fullName) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { fullName: customer.fullName },
+        })
+      }
 
-        if (!user) {
-          user = await prisma.user.create({
+      const orderItemsData = verifiedItems.map((item) => ({
+        productId: item.productId,
+        productNameSnapshot: item.name,
+        unitPrice: item.unitPrice,
+        quantityPurchased: item.quantity,
+        quantityRedeemed: 0,
+        redeemDeadlineAt: item.redeemDeadlineTime
+          ? calculatePromoDeadline(item.redeemDeadlineTime)
+          : null,
+      }))
+
+      await prisma.$transaction(async (tx) => {
+        for (const item of verifiedItems) {
+          await tx.product.update({
+            where: { id: item.productId },
             data: {
-              tenantId: dbTenant.id,
-              dni: cleanDni,
-              email: cleanEmail,
-              fullName: customer.fullName,
-              phone: customer.phone || null,
-              role: 'CUSTOMER',
+              stockAvailable: {
+                decrement: item.quantity,
+              },
             },
           })
-        } else if (customer.fullName && user.fullName !== customer.fullName) {
-          await prisma.user.update({
-            where: { id: user.id },
-            data: { fullName: customer.fullName },
-          })
         }
 
-        // Mapear cada item asegurando que productId sea un UUID real existente en dbTenant.products
-        const tenantProducts = dbTenant.products
-        const orderItemsData = verifiedItems.map((item) => {
-          const dbProd =
-            tenantProducts.find((p) => p.id === item.productId) ||
-            tenantProducts.find((p) => p.name.toLowerCase() === item.name.toLowerCase()) ||
-            tenantProducts[0]
-
-          return {
-            productId: dbProd ? dbProd.id : item.productId,
-            productNameSnapshot: item.name,
-            unitPrice: item.unitPrice,
-            quantityPurchased: item.quantity,
-            quantityRedeemed: 0,
-            redeemDeadlineAt: item.redeemDeadlineTime
-              ? calculatePromoDeadline(item.redeemDeadlineTime)
-              : null,
-          }
-        })
-
-        // Crear Orden en estado PENDING (o ACTIVE si el boliche opera en modo demo / sin credenciales de MP)
-        await prisma.order.create({
+        await tx.order.create({
           data: {
             id: orderId,
             tenantId: dbTenant.id,
@@ -149,9 +159,13 @@ export async function POST(req: NextRequest) {
             },
           },
         })
-      }
+      })
     } catch (dbErr) {
       console.error('[checkout/preference] Error persistiendo orden en PostgreSQL:', dbErr)
+      return NextResponse.json(
+        { error: 'No se pudo registrar el pedido en la base de datos.' },
+        { status: 500 }
+      )
     }
 
     // 4. Si el boliche tiene credenciales reales de Mercado Pago configuradas

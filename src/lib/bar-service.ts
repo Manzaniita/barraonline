@@ -102,42 +102,23 @@ export async function verifyQrForBar({
     })
 
     if (!order) {
-      // Si la orden no está en la base de datos (por ejemplo en prueba demo inicial)
       return {
-        valid: true,
-        order: {
-          orderId,
-          tenantId: 'tenant-demo-club',
-          tenantSlug,
-          customerName: sigResult.payload?.userDni ? `Cliente DNI ${sigResult.payload.userDni}` : 'Cliente Demo',
-          customerDni: sigResult.payload?.userDni || '42123456',
-          totalAmount: 14000,
-          status: 'ACTIVE',
-          expiresAt: sigResult.payload?.expiresAt || new Date(Date.now() + 86400000).toISOString(),
-          items: [
-            {
-              orderItemId: 'item-demo-1',
-              productId: 'prod-fernet-01',
-              name: 'Fernet Branca con Coca',
-              unitPrice: 6500,
-              quantityPurchased: 2,
-              quantityRedeemed: 0,
-              quantityAvailable: 2,
-              isExpired: false,
-            },
-            {
-              orderItemId: 'item-demo-2',
-              productId: 'prod-agua-09',
-              name: 'Agua Mineral Kin',
-              unitPrice: 1000,
-              quantityPurchased: 1,
-              quantityRedeemed: 0,
-              quantityAvailable: 1,
-              isExpired: false,
-            },
-          ],
-          canRedeem: true,
-        },
+        valid: false,
+        error: 'La orden no existe o fue eliminada del sistema.',
+      }
+    }
+
+    if (!order.tenant || !order.tenant.isActive || order.tenant.subscriptionStatus === 'CANCELLED') {
+      return {
+        valid: false,
+        error: 'La tienda asociada a este código QR se encuentra inactiva o dada de baja.',
+      }
+    }
+
+    if (tenantSlug && order.tenant.slug !== tenantSlug) {
+      return {
+        valid: false,
+        error: `Este código QR pertenece a otro local (${order.tenant.name}).`,
       }
     }
 

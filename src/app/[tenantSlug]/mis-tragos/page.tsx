@@ -79,7 +79,7 @@ interface LiveOrder {
 
 export default function MisTragosPage() {
   const params = useParams()
-  const tenantSlug = typeof params?.tenantSlug === 'string' ? params.tenantSlug : 'demo-club'
+  const tenantSlug = typeof params?.tenantSlug === 'string' ? params.tenantSlug : ''
 
   const [activeTab, setActiveTab] = useState<'active' | 'history'>('active')
   const [activeOrders, setActiveOrders] = useState<LiveOrder[]>([])
@@ -89,6 +89,7 @@ export default function MisTragosPage() {
   const [isLoaded, setIsLoaded] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
   const [liveBanner, setLiveBanner] = useState<string | null>(null)
+  const [tenantDeleted, setTenantDeleted] = useState(false)
 
   // Guardamos las redenciones previas para detectar canjes en vivo mientras el usuario mira la pantalla
   const prevRedeemedCountRef = useRef<Record<string, number>>({})
@@ -190,8 +191,27 @@ export default function MisTragosPage() {
 
       const data = await res.json()
       if (data.success) {
+        if (data.tenantDeleted) {
+          setTenantDeleted(true)
+          setActiveOrders([])
+          setHistoryOrders([])
+          try {
+            localStorage.removeItem(`bo_tickets_${tenantSlug}`)
+          } catch {}
+          return
+        }
+
         const liveActive: LiveOrder[] = data.activeOrders || []
         const liveHistory: LiveOrder[] = data.historyOrders || []
+
+        // Sincronizar localStorage purgando órdenes que hayan sido eliminadas en el servidor
+        try {
+          const validOrderIds = new Set([...liveActive, ...liveHistory].map((o) => o.orderId))
+          const cleanedSaved = saved.filter((s) => validOrderIds.has(s.orderId))
+          if (cleanedSaved.length !== saved.length) {
+            localStorage.setItem(`bo_tickets_${tenantSlug}`, JSON.stringify(cleanedSaved))
+          }
+        } catch {}
 
         // Mapear qrToken y ticketDataUrl guardados localmente
         const enrichedActive = liveActive.map((ord) => {
@@ -257,6 +277,29 @@ export default function MisTragosPage() {
 
     return () => clearInterval(interval)
   }, [syncLiveStatus])
+
+  if (tenantDeleted) {
+    return (
+      <div className="min-h-screen bg-[#07070b] text-white flex flex-col items-center justify-center p-6 text-center">
+        <div className="max-w-sm w-full bg-[#12121a] border border-white/10 rounded-3xl p-8 space-y-4">
+          <div className="w-16 h-16 rounded-2xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center mx-auto text-rose-400">
+            <AlertTriangle className="w-8 h-8" />
+          </div>
+          <h1 className="text-xl font-black text-white">Tienda no disponible</h1>
+          <p className="text-xs text-white/60 leading-relaxed">
+            La tienda <span className="font-mono text-purple-300">/{tenantSlug}</span> no existe o fue eliminada del sistema.
+          </p>
+          <Link
+            href="/"
+            className="inline-flex items-center justify-center gap-2 w-full py-3 px-4 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold text-xs"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Ir al Inicio</span>
+          </Link>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-[#07070b] text-white flex flex-col justify-between selection:bg-purple-500 selection:text-white">
@@ -381,7 +424,16 @@ export default function MisTragosPage() {
 
                       <div className="flex items-center gap-1 bg-amber-500/15 border border-amber-500/30 text-amber-300 font-semibold px-2 py-0.5 rounded-lg text-[10px]">
                         <Clock className="w-3 h-3" />
-                        <span>Hasta las 07:00 AM</span>
+                        <span>
+                          Hasta las{' '}
+                          {order.expiresAt
+                            ? new Date(order.expiresAt).toLocaleTimeString('es-AR', {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })
+                            : '07:00'}{' '}
+                          hs
+                        </span>
                       </div>
                     </div>
 

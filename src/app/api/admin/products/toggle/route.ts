@@ -8,7 +8,17 @@ export async function POST(req: NextRequest) {
     if (auth.error) return auth.error
 
     const body = await req.json()
-    const { productId, isActive, price, stockAvailable } = body
+    const {
+      productId,
+      isActive,
+      name,
+      category,
+      description,
+      price,
+      stockAvailable,
+      imageUrl,
+      redeemDeadlineTime,
+    } = body
 
     if (!productId) {
       return NextResponse.json(
@@ -18,15 +28,19 @@ export async function POST(req: NextRequest) {
     }
 
     let updatedProduct
-    if (typeof isActive === 'boolean') {
+    if (typeof isActive === 'boolean' && name === undefined && price === undefined && stockAvailable === undefined) {
       updatedProduct = await toggleProductStatus({ productId, isActive })
-    }
-
-    if (price !== undefined || stockAvailable !== undefined) {
+    } else {
       updatedProduct = await updateProductDetails({
         productId,
+        name,
+        category,
+        description,
         price: price !== undefined ? Number(price) : undefined,
         stockAvailable: stockAvailable !== undefined ? Number(stockAvailable) : undefined,
+        imageUrl,
+        redeemDeadlineTime,
+        isActive: typeof isActive === 'boolean' ? isActive : undefined,
       })
     }
 

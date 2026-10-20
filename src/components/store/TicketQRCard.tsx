@@ -38,6 +38,7 @@ export function TicketQRCard({
   const [ticketImageUrl, setTicketImageUrl] = useState<string | null>(null)
   const [qrOnlyUrl, setQrOnlyUrl] = useState<string | null>(null)
   const [isGenerating, setIsGenerating] = useState(true)
+  const [orderError, setOrderError] = useState<string | null>(null)
   const [isFullScreen, setIsFullScreen] = useState(false)
   const [downloadTriggered, setDownloadTriggered] = useState(false)
   const autoDownloadedRef = useRef(false)
@@ -45,48 +46,52 @@ export function TicketQRCard({
   useEffect(() => {
     async function loadAndGenerateTicket() {
       setIsGenerating(true)
+      setOrderError(null)
       try {
-        const customer = getSavedCustomerProfile() || {
-          dni: '42123456',
-          fullName: 'Cliente de Prueba',
-        }
+        const customer = getSavedCustomerProfile()
 
         // Obtener la orden real y su token criptográfico firmado desde el endpoint seguro
         const fetchUrl = `/api/customer/orders/${orderId}${demo ? '?demo=true' : ''}`
         const response = await fetch(fetchUrl)
-        let qrToken = ''
-        let dbOrder = null
-
-        if (response.ok) {
-          const data = await response.json()
-          qrToken = data.qrToken || ''
-          dbOrder = data.order
+        if (!response.ok) {
+          setOrderError('La orden no existe o fue eliminada de la base de datos.')
+          setIsGenerating(false)
+          return
         }
 
-        // Fallback seguro de token si la orden no devolvió un token de base de datos
-        if (!qrToken) {
-          qrToken = `BO1/ORD-${orderId.replace(/-/g, '').toUpperCase().slice(0, 16)}`
+        const data = await response.json()
+        const qrToken = data.qrToken || ''
+        const dbOrder = data.order
+
+        if (!dbOrder || !dbOrder.items || dbOrder.items.length === 0) {
+          setOrderError('No se encontraron productos válidos en esta orden.')
+          setIsGenerating(false)
+          return
         }
 
         const ticket: TicketData = {
           orderId,
           tenantSlug,
           nightclubName: dbOrder?.tenant?.name || nightclubName,
-          customerName: dbOrder?.user?.fullName || customer.fullName,
-          customerDni: dbOrder?.user?.dni || customer.dni,
-          totalAmount: dbOrder?.totalAmount ? Number(dbOrder.totalAmount) : 14000,
-          expiresAt: dbOrder?.expiresAt ? new Date(dbOrder.expiresAt).toISOString() : new Date(Date.now() + 1000 * 60 * 60 * 10).toISOString(),
-          items: dbOrder?.items?.length
-            ? dbOrder.items.map((i: { productNameSnapshot?: string; product?: { name: string }; quantityPurchased: number; unitPrice: number }) => ({
-                name: i.productNameSnapshot || i.product?.name || 'Bebida',
-                quantity: i.quantityPurchased,
-                unitPrice: Number(i.unitPrice),
-              }))
-            : [
-                { name: 'Fernet Branca con Coca 750ml', quantity: 2, unitPrice: 6500 },
-                { name: 'Agua Mineral Kin con o sin gas 500ml', quantity: 1, unitPrice: 1000 },
-              ],
-          qrToken,
+          customerName: dbOrder?.user?.fullName || customer?.fullName || 'Cliente',
+          customerDni: dbOrder?.user?.dni || customer?.dni || '',
+          totalAmount: Number(dbOrder.totalAmount),
+          expiresAt: dbOrder.expiresAt
+            ? new Date(dbOrder.expiresAt).toISOString()
+            : new Date(Date.now() + 1000 * 60 * 60 * 10).toISOString(),
+          items: dbOrder.items.map(
+            (i: {
+              productNameSnapshot?: string
+              product?: { name: string }
+              quantityPurchased: number
+              unitPrice: number
+            }) => ({
+              name: i.productNameSnapshot || i.product?.name || 'Bebida',
+              quantity: i.quantityPurchased,
+              unitPrice: Number(i.unitPrice),
+            })
+          ),
+          qrToken: qrToken || orderId,
         }
 
         setTicketData(ticket)
@@ -155,6 +160,19 @@ export function TicketQRCard({
     )
   }
 
+  if (orderError || !ticketData) {
+    return (
+      <div className="w-full bg-red-950/30 border border-red-500/30 rounded-3xl p-6 text-center space-y-2">
+        <p className="font-bold text-sm text-red-200">{orderError || 'Orden no disponible.'}</p>
+        <p className="text-xs text-red-300/70">Verificá que la orden sea válida o contactá al personal de la barra.</p>
+      </div>
+    )
+  }
+
+  const formattedExpiryHour = ticketData.expiresAt
+    ? new Date(ticketData.expiresAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+    : '07:00'
+
   return (
     <div className="w-full space-y-4">
       {/* Banner Instructivo Obligatorio */}
@@ -176,11 +194,11 @@ export function TicketQRCard({
 
         <div className="flex items-center justify-between text-xs text-white/60 mb-3">
           <span className="font-extrabold uppercase tracking-wider text-purple-400">
-            {nightclubName}
+            {ticketData.nightclubName || nightclubName}
           </span>
           <span className="flex items-center gap-1 font-mono text-[11px]">
             <Clock className="w-3 h-3 text-amber-400" />
-            Hasta las 07:00 AM
+            Hasta las {formattedExpiryHour} hs
           </span>
         </div>
 

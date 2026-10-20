@@ -117,6 +117,7 @@ export default function SuperAdminPage() {
   const [newMpSellerId, setNewMpSellerId] = useState('')
   const [newMpPublicKey, setNewMpPublicKey] = useState('')
   const [newMpAccessToken, setNewMpAccessToken] = useState('')
+  const [seedSampleProducts, setSeedSampleProducts] = useState(false)
   const [creating, setCreating] = useState(false)
 
   // Modal para editar boliche
@@ -229,6 +230,7 @@ export default function SuperAdminPage() {
           mpSellerId: newMpSellerId || undefined,
           mpPublicKey: newMpPublicKey || undefined,
           mpAccessTokenEnc: newMpAccessToken || undefined,
+          seedSampleProducts,
         }),
       })
       const data = await res.json()
@@ -595,7 +597,7 @@ export default function SuperAdminPage() {
 
           <div className="flex items-center gap-3">
             <Link
-              href="/demo-club/mi-cuenta"
+              href="/mi-cuenta"
               className="px-3 py-2 rounded-lg bg-gray-900 hover:bg-gray-800 border border-gray-800 text-purple-300 text-xs font-semibold flex items-center gap-1.5"
             >
               <UserCheck className="w-3.5 h-3.5" />
@@ -1072,9 +1074,15 @@ export default function SuperAdminPage() {
                   </div>
                 </div>
 
-                <div className="p-3 bg-purple-950/30 border border-purple-800/40 rounded-xl text-xs text-purple-300">
-                  ✨ Se autogenerarán 4 tragos clásicos para que el boliche comience a vender de inmediato.
-                </div>
+                <label className="flex items-center gap-2.5 p-3 bg-purple-950/30 border border-purple-800/40 rounded-xl text-xs text-purple-200 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={seedSampleProducts}
+                    onChange={(e) => setSeedSampleProducts(e.target.checked)}
+                    className="rounded border-purple-700 bg-black/50 text-purple-600 focus:ring-purple-500"
+                  />
+                  <span>Incluir productos de ejemplo iniciales (desmarcado = carta vacía 100% limpia)</span>
+                </label>
 
                 <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-800">
                   <button

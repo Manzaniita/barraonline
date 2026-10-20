@@ -207,9 +207,12 @@ export async function renderTicketToCanvas(ticket: TicketData): Promise<string> 
 
   // 6. Pie de Seguridad y Validez
   const footerY = qrBoxY + qrBoxSize + 40
+  const expiryLabel = ticket.expiresAt
+    ? new Date(ticket.expiresAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+    : '07:00'
   ctx.fillStyle = '#fbbf24'
   ctx.font = 'bold 20px sans-serif'
-  ctx.fillText(`VÁLIDO HASTA LAS 07:00 AM • CANJE REUTILIZABLE EN BARRA`, width / 2, footerY)
+  ctx.fillText(`VÁLIDO HASTA LAS ${expiryLabel} HS • CANJE REUTILIZABLE EN BARRA`, width / 2, footerY)
 
   ctx.fillStyle = 'rgba(255, 255, 255, 0.45)'
   ctx.font = '16px monospace'

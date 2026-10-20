@@ -62,9 +62,19 @@ export function UsersRoleManager({
 }: UsersRoleManagerProps) {
   const [users, setUsers] = useState<AdminUserRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
   const [detectedSuperAdmin, setDetectedSuperAdmin] = useState(isSuperAdmin)
+  const hasLoadedOnceRef = React.useRef(false)
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [search])
 
   const effectiveIsSuper = isSuperAdmin || detectedSuperAdmin
   const effectiveAllowSuperRole = allowSuperAdminRole || detectedSuperAdmin
@@ -103,16 +113,21 @@ export function UsersRoleManager({
   }
 
   const fetchUsers = useCallback(async () => {
-    setLoading(true)
+    if (!hasLoadedOnceRef.current) {
+      setLoading(true)
+    } else {
+      setRefreshing(true)
+    }
     try {
       const q = new URLSearchParams()
       if (tenantSlug) q.set('tenantSlug', tenantSlug)
-      if (search.trim()) q.set('search', search.trim())
+      if (debouncedSearch.trim()) q.set('search', debouncedSearch.trim())
 
       const res = await fetch(`/api/admin/users?${q.toString()}`, { cache: 'no-store' })
       const data = await res.json()
       if (data.success && data.users) {
         setUsers(data.users)
+        hasLoadedOnceRef.current = true
         if (data.viewerRole === 'SUPER_ADMIN') {
           setDetectedSuperAdmin(true)
         }
@@ -123,8 +138,9 @@ export function UsersRoleManager({
       showToast('Error de conexión al cargar usuarios', 'error')
     } finally {
       setLoading(false)
+      setRefreshing(false)
     }
-  }, [tenantSlug, search])
+  }, [tenantSlug, debouncedSearch])
 
   useEffect(() => {
     fetchUsers()
@@ -397,7 +413,7 @@ export function UsersRoleManager({
             className="p-2.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 cursor-pointer"
             title="Refrescar lista"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-purple-400' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${loading || refreshing ? 'animate-spin text-purple-400' : ''}`} />
           </button>
 
           <button

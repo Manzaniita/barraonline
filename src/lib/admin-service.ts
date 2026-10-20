@@ -1,4 +1,5 @@
 import { prisma } from './prisma'
+import { getSaasPlanById } from './saas-plans'
 
 export interface CategorySummary {
   category: string
@@ -32,6 +33,12 @@ export interface TenantSettingsData {
   mpPublicKey?: string | null
   hasMpAccessToken: boolean
   hasMpWebhookSecret: boolean
+  planCode: string
+  planName: string
+  feePercentage: number
+  subscriptionPriceMonthly: number
+  maxProducts: number
+  maxStaff: number
   themeConfig: {
     nightclubName?: string
     tagline?: string
@@ -291,6 +298,9 @@ export async function getClubDashboardMetrics(tenantSlug: string): Promise<ClubN
         ? (tenant.themeConfig as Record<string, any>)
         : {}
 
+    const planCode = String(rawTheme.plan || 'PRO').toUpperCase()
+    const planDetails = await getSaasPlanById(planCode)
+
     const tenantSettings: TenantSettingsData = {
       id: tenant.id,
       name: tenant.name,
@@ -298,8 +308,14 @@ export async function getClubDashboardMetrics(tenantSlug: string): Promise<ClubN
       defaultExpirationHour: tenant.defaultExpirationHour || '07:00',
       mpSellerId: tenant.mpSellerId,
       mpPublicKey: tenant.mpPublicKey,
-      hasMpAccessToken: Boolean(tenant.mpAccessTokenEnc),
-      hasMpWebhookSecret: Boolean(tenant.mpWebhookSecret),
+      hasMpAccessToken: Boolean(tenant.mpAccessTokenEnc && tenant.mpAccessTokenEnc.trim() !== ''),
+      hasMpWebhookSecret: Boolean(tenant.mpWebhookSecret && tenant.mpWebhookSecret.trim() !== ''),
+      planCode,
+      planName: planDetails?.name || planCode,
+      feePercentage: Number(tenant.feePercentage || 0),
+      subscriptionPriceMonthly: Number(tenant.subscriptionPriceMonthly || planDetails?.monthlyPrice || 0),
+      maxProducts: planDetails?.maxProducts ?? 0,
+      maxStaff: planDetails?.maxStaff ?? 0,
       themeConfig: {
         nightclubName: rawTheme.nightclubName || tenant.name,
         tagline: rawTheme.tagline || '',
@@ -356,7 +372,7 @@ export async function toggleProductStatus({
 }
 
 /**
- * Crea un nuevo producto en la carta del boliche.
+ * Crea un nuevo producto en la carta del boliche (validando límites del Plan SaaS).
  */
 export async function createProduct({
   tenantSlug,
@@ -381,9 +397,27 @@ export async function createProduct({
 }) {
   const tenant = await prisma.tenant.findUnique({
     where: { slug: tenantSlug },
+    include: { _count: { select: { products: true } } },
   })
   if (!tenant) {
     throw new Error('Tienda no encontrada.')
+  }
+
+  const rawTheme =
+    tenant.themeConfig && typeof tenant.themeConfig === 'object'
+      ? (tenant.themeConfig as Record<string, any>)
+      : {}
+  const planCode = String(rawTheme.plan || 'PRO').toUpperCase()
+  const planDetails = await getSaasPlanById(planCode)
+
+  if (
+    planDetails &&
+    planDetails.maxProducts > 0 &&
+    tenant._count.products >= planDetails.maxProducts
+  ) {
+    throw new Error(
+      `Tu tienda alcanzó el límite de ${planDetails.maxProducts} productos en carta permitido por tu Plan ${planDetails.name}. Contactá al administrador de la plataforma para ampliar tu plan.`
+    )
   }
 
   return prisma.product.create({
@@ -489,6 +523,7 @@ export async function updateTenantSettings({
   mpPublicKey,
   mpAccessTokenEnc,
   mpWebhookSecret,
+  clearMpCredentials,
   themeConfig,
 }: {
   tenantSlug: string
@@ -498,6 +533,7 @@ export async function updateTenantSettings({
   mpPublicKey?: string | null
   mpAccessTokenEnc?: string | null
   mpWebhookSecret?: string | null
+  clearMpCredentials?: boolean
   themeConfig?: Record<string, any>
 }) {
   const existing = await prisma.tenant.findUnique({
@@ -527,14 +563,23 @@ export async function updateTenantSettings({
       ...(defaultExpirationHour !== undefined && defaultExpirationHour.trim()
         ? { defaultExpirationHour: defaultExpirationHour.trim() }
         : {}),
-      ...(mpSellerId !== undefined ? { mpSellerId: mpSellerId ? mpSellerId.trim() : null } : {}),
-      ...(mpPublicKey !== undefined ? { mpPublicKey: mpPublicKey ? mpPublicKey.trim() : null } : {}),
-      ...(mpAccessTokenEnc && mpAccessTokenEnc.trim() !== ''
-        ? { mpAccessTokenEnc: mpAccessTokenEnc.trim() }
-        : {}),
-      ...(mpWebhookSecret && mpWebhookSecret.trim() !== ''
-        ? { mpWebhookSecret: mpWebhookSecret.trim() }
-        : {}),
+      ...(clearMpCredentials
+        ? {
+            mpSellerId: null,
+            mpPublicKey: null,
+            mpAccessTokenEnc: null,
+            mpWebhookSecret: null,
+          }
+        : {
+            ...(mpSellerId !== undefined ? { mpSellerId: mpSellerId ? mpSellerId.trim() : null } : {}),
+            ...(mpPublicKey !== undefined ? { mpPublicKey: mpPublicKey ? mpPublicKey.trim() : null } : {}),
+            ...(mpAccessTokenEnc && mpAccessTokenEnc.trim() !== ''
+              ? { mpAccessTokenEnc: mpAccessTokenEnc.trim() }
+              : {}),
+            ...(mpWebhookSecret && mpWebhookSecret.trim() !== ''
+              ? { mpWebhookSecret: mpWebhookSecret.trim() }
+              : {}),
+          }),
       themeConfig: mergedTheme,
     },
   })

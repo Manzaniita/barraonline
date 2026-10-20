@@ -52,6 +52,7 @@ export async function PUT(req: NextRequest) {
       mpPublicKey,
       mpAccessTokenEnc,
       mpWebhookSecret,
+      clearMpCredentials,
       themeConfig,
     } = body
 
@@ -74,6 +75,7 @@ export async function PUT(req: NextRequest) {
       mpPublicKey,
       mpAccessTokenEnc,
       mpWebhookSecret,
+      clearMpCredentials,
       themeConfig,
     })
 

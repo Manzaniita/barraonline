@@ -144,45 +144,149 @@ export async function createMercadoPagoPreference({
   const totalAmount = items.reduce((acc, curr) => acc + curr.unitPrice * curr.quantity, 0)
   
   // Comisión de plataforma opcional si está configurada en SuperAdmin
-  const marketplaceFee = feePercentage > 0 ? (totalAmount * feePercentage) / 100 : undefined
+  const marketplaceFee =
+    feePercentage > 0 ? Number(((totalAmount * feePercentage) / 100).toFixed(2)) : undefined
 
   const mpItems = items.map((item) => ({
     id: item.productId,
     title: item.name,
-    unit_price: item.unitPrice,
-    quantity: item.quantity,
+    unit_price: Number(item.unitPrice),
+    quantity: Number(item.quantity),
     currency_id: 'ARS',
   }))
 
-  const response = await preferenceApi.create({
-    body: {
-      items: mpItems,
-      payer: {
-        name: firstName,
-        surname: lastName,
-        email: customer.email || `${customer.dni}@barraonline.com`,
-        identification: {
-          type: 'DNI',
-          number: customer.dni,
-        },
-        phone: customer.phone ? { number: customer.phone } : undefined,
-      },
-      external_reference: orderId,
-      marketplace_fee: marketplaceFee,
-      notification_url: `${baseUrl}/api/webhooks/mercadopago/${tenantSlug}`,
-      back_urls: {
-        success: `${baseUrl}/${tenantSlug}/orden/${orderId}?status=approved`,
-        pending: `${baseUrl}/${tenantSlug}/orden/${orderId}?status=pending`,
-        failure: `${baseUrl}/${tenantSlug}/orden/${orderId}?status=failure`,
-      },
-      auto_return: 'approved',
-      statement_descriptor: 'BARRA ONLINE QR',
+  const isPublicHttps =
+    baseUrl.startsWith('https://') &&
+    !baseUrl.includes('localhost') &&
+    !baseUrl.includes('127.0.0.1')
+
+  const cleanDni = (customer.dni || '').replace(/\D/g, '')
+
+  const basePreferenceBody: any = {
+    items: mpItems,
+    payer: {
+      name: firstName,
+      surname: lastName,
+      email: customer.email || `${cleanDni || 'cliente'}@barraonline.com`,
+      ...(cleanDni
+        ? {
+            identification: {
+              type: 'DNI',
+              number: cleanDni,
+            },
+          }
+        : {}),
+      phone: customer.phone ? { number: customer.phone } : undefined,
     },
-  })
+    external_reference: orderId,
+    ...(isPublicHttps
+      ? {
+          notification_url: `${baseUrl}/api/webhooks/mercadopago/${tenantSlug}`,
+          auto_return: 'approved',
+        }
+      : {}),
+    back_urls: {
+      success: `${baseUrl}/${tenantSlug}/orden/${orderId}?status=approved`,
+      pending: `${baseUrl}/${tenantSlug}/orden/${orderId}?status=pending`,
+      failure: `${baseUrl}/${tenantSlug}/orden/${orderId}?status=failure`,
+    },
+    statement_descriptor: 'BARRA ONLINE QR',
+  }
+
+  let response
+  try {
+    response = await preferenceApi.create({
+      body: {
+        ...basePreferenceBody,
+        ...(marketplaceFee ? { marketplace_fee: marketplaceFee } : {}),
+      },
+    })
+  } catch (err: any) {
+    // Si el Access Token del boliche es directo (no vinculado vía OAuth Marketplace),
+    // Mercado Pago rechaza el campo marketplace_fee. Reintentamos cobro directo manteniendo el fee contable en la BD.
+    if (marketplaceFee) {
+      response = await preferenceApi.create({
+        body: basePreferenceBody,
+      })
+    } else {
+      throw err
+    }
+  }
 
   return {
     preferenceId: response.id,
     initPoint: response.init_point,
     sandboxInitPoint: response.sandbox_init_point,
+  }
+}
+
+/**
+ * Verifica directamente contra la API de Mercado Pago si existe un pago aprobado para la orden.
+ * Útil tanto en el retorno del comprador (back_urls) como en validación cruzada con el webhook.
+ */
+export async function verifyMercadoPagoOrderPayment({
+  accessToken,
+  orderId,
+  paymentId,
+}: {
+  accessToken: string
+  orderId: string
+  paymentId?: string | null
+}): Promise<{
+  approved: boolean
+  rejected: boolean
+  mpPaymentId: string | null
+  status: string | null
+}> {
+  try {
+    const client = getMercadoPagoClient(accessToken)
+    const paymentApi = new Payment(client)
+
+    if (paymentId && paymentId !== 'null' && paymentId !== 'undefined') {
+      const paymentData = await paymentApi.get({ id: paymentId })
+      if (paymentData && String(paymentData.external_reference) === orderId) {
+        const st = String(paymentData.status || '')
+        return {
+          approved: st === 'approved',
+          rejected: st === 'rejected' || st === 'cancelled',
+          mpPaymentId: String(paymentData.id),
+          status: st,
+        }
+      }
+    }
+
+    // Buscar por external_reference si no vino paymentId o no coincidió
+    const searchRes = await paymentApi.search({
+      options: {
+        external_reference: orderId,
+      },
+    })
+
+    const results = searchRes?.results || []
+    const approvedPayment = results.find((p: any) => p.status === 'approved')
+    if (approvedPayment) {
+      return {
+        approved: true,
+        rejected: false,
+        mpPaymentId: String(approvedPayment.id),
+        status: 'approved',
+      }
+    }
+
+    const latestPayment = results[0]
+    if (latestPayment) {
+      const st = String(latestPayment.status || '')
+      return {
+        approved: st === 'approved',
+        rejected: st === 'rejected' || st === 'cancelled',
+        mpPaymentId: String(latestPayment.id),
+        status: st,
+      }
+    }
+
+    return { approved: false, rejected: false, mpPaymentId: null, status: null }
+  } catch (err) {
+    console.warn('[verifyMercadoPagoOrderPayment] Error consultando MP:', err)
+    return { approved: false, rejected: false, mpPaymentId: null, status: null }
   }
 }

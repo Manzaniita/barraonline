@@ -33,6 +33,19 @@ import {
 import { RoleGuard } from '@/components/auth/RoleGuard'
 import { UsersRoleManager } from '@/components/admin/UsersRoleManager'
 
+interface SaasPlanSummary {
+  id: string
+  name: string
+  description: string
+  feePercentage: number
+  monthlyPrice: number
+  maxProducts: number
+  maxStaff: number
+  isActive: boolean
+  sortOrder: number
+  tenantsCount?: number
+}
+
 interface TenantSummary {
   id: string
   name: string
@@ -42,6 +55,10 @@ interface TenantSummary {
   subscriptionStatus: string
   isActive: boolean
   plan: string
+  planName?: string
+  subscriptionPriceMonthly?: number
+  maxProducts?: number
+  maxStaff?: number
   brandColor: string
   accentColor: string
   nightclubName: string
@@ -50,6 +67,8 @@ interface TenantSummary {
   mpSellerId: string
   mpPublicKey: string
   mpAccessTokenEnc: string
+  mpWebhookSecret?: string
+  hasMpConfigured?: boolean
   feePercentage: number
   totalOrders: number
   totalProducts: number
@@ -72,10 +91,24 @@ interface TenantSummary {
 
 export default function SuperAdminPage() {
   const [tenants, setTenants] = useState<TenantSummary[]>([])
+  const [plans, setPlans] = useState<SaasPlanSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
-  const [activeSection, setActiveSection] = useState<'tenants' | 'users'>('tenants')
+  const [activeSection, setActiveSection] = useState<'tenants' | 'plans' | 'users'>('tenants')
+
+  // Modal para crear / editar Plan SaaS
+  const [editingPlan, setEditingPlan] = useState<SaasPlanSummary | null>(null)
+  const [isNewPlan, setIsNewPlan] = useState(false)
+  const [planCode, setPlanCode] = useState('')
+  const [planName, setPlanName] = useState('')
+  const [planDescription, setPlanDescription] = useState('')
+  const [planFee, setPlanFee] = useState(5.0)
+  const [planMonthlyPrice, setPlanMonthlyPrice] = useState(0)
+  const [planMaxProducts, setPlanMaxProducts] = useState(0)
+  const [planMaxStaff, setPlanMaxStaff] = useState(0)
+  const [planSyncTenants, setPlanSyncTenants] = useState(true)
+  const [savingPlan, setSavingPlan] = useState(false)
 
   // Modal para gestionar Administradores del Boliche
   const [managingAdminsTenant, setManagingAdminsTenant] = useState<TenantSummary | null>(null)
@@ -106,8 +139,11 @@ export default function SuperAdminPage() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [newName, setNewName] = useState('')
   const [newSlug, setNewSlug] = useState('')
+  const [slugTouched, setSlugTouched] = useState(false)
+  const [nightclubNameTouched, setNightclubNameTouched] = useState(false)
   const [newDomain, setNewDomain] = useState('')
   const [newFee, setNewFee] = useState(5.0)
+  const [newMonthlyPrice, setNewMonthlyPrice] = useState(45000)
   const [newPlan, setNewPlan] = useState('PRO')
   const [newBrandColor, setNewBrandColor] = useState('#8B5CF6')
   const [newAccentColor, setNewAccentColor] = useState('#EC4899')
@@ -117,8 +153,14 @@ export default function SuperAdminPage() {
   const [newMpSellerId, setNewMpSellerId] = useState('')
   const [newMpPublicKey, setNewMpPublicKey] = useState('')
   const [newMpAccessToken, setNewMpAccessToken] = useState('')
+  const [newMpWebhookSecret, setNewMpWebhookSecret] = useState('')
   const [seedSampleProducts, setSeedSampleProducts] = useState(false)
   const [creating, setCreating] = useState(false)
+  const [testingMpToken, setTestingMpToken] = useState(false)
+  const [mpVerifyStatus, setMpVerifyStatus] = useState<{
+    ok: boolean
+    text: string
+  } | null>(null)
 
   // Modal para editar boliche
   const [editingTenant, setEditingTenant] = useState<TenantSummary | null>(null)
@@ -126,6 +168,7 @@ export default function SuperAdminPage() {
   const [editSlug, setEditSlug] = useState('')
   const [editDomain, setEditDomain] = useState('')
   const [editFee, setEditFee] = useState(5.0)
+  const [editMonthlyPrice, setEditMonthlyPrice] = useState(0)
   const [editPlan, setEditPlan] = useState('PRO')
   const [editBrandColor, setEditBrandColor] = useState('#8B5CF6')
   const [editAccentColor, setEditAccentColor] = useState('#EC4899')
@@ -137,6 +180,7 @@ export default function SuperAdminPage() {
   const [editMpSellerId, setEditMpSellerId] = useState('')
   const [editMpPublicKey, setEditMpPublicKey] = useState('')
   const [editMpAccessToken, setEditMpAccessToken] = useState('')
+  const [editMpWebhookSecret, setEditMpWebhookSecret] = useState('')
   const [savingEdit, setSavingEdit] = useState(false)
 
   // Modal para borrar boliche
@@ -148,18 +192,29 @@ export default function SuperAdminPage() {
 
   const showToast = (text: string, type: 'success' | 'error' = 'success') => {
     setToast({ text, type })
-    setTimeout(() => setToast(null), 3500)
+    setTimeout(() => setToast(null), 4000)
   }
 
   const fetchTenants = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true)
     try {
-      const res = await fetch('/api/superadmin/tenants', { cache: 'no-store' })
-      const data = await res.json()
+      const [tenantsRes, plansRes] = await Promise.all([
+        fetch('/api/superadmin/tenants', { cache: 'no-store' }),
+        fetch('/api/superadmin/plans', { cache: 'no-store' }),
+      ])
+      const data = await tenantsRes.json()
+      const plansData = await plansRes.json().catch(() => ({}))
+
       if (data.success && data.tenants) {
         setTenants(data.tenants)
       } else {
         showToast(data.error || 'Error cargando boliches', 'error')
+      }
+
+      if (plansData?.success && Array.isArray(plansData.plans)) {
+        setPlans(plansData.plans)
+      } else if (Array.isArray(data.plans)) {
+        setPlans(data.plans)
       }
     } catch (err) {
       console.error(err)
@@ -174,16 +229,159 @@ export default function SuperAdminPage() {
     fetchTenants()
   }, [fetchTenants])
 
-  // Auto-slug a partir del nombre en creación
+  // Auto-slug y auto-nombre comercial a partir del nombre oficial (sin cortarse en la primera letra)
   const handleNameChange = (val: string) => {
     setNewName(val)
-    if (!newNightclubName) setNewNightclubName(val)
-    const slugified = val
-      .toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-    setNewSlug(slugified)
+    if (!nightclubNameTouched) {
+      setNewNightclubName(val)
+    }
+    if (!slugTouched) {
+      const slugified = val
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+      setNewSlug(slugified)
+    }
+  }
+
+  // Seleccionar plan al crear boliche -> aplica automáticamente comisión y abono configurados en ese plan
+  const handleSelectNewPlan = (planCodeVal: string) => {
+    setNewPlan(planCodeVal)
+    const found = plans.find((p) => p.id.toUpperCase() === planCodeVal.toUpperCase())
+    if (found) {
+      setNewFee(found.feePercentage)
+      setNewMonthlyPrice(found.monthlyPrice)
+    }
+  }
+
+  // Seleccionar plan al editar boliche -> aplica comisión y abono configurados en ese plan
+  const handleSelectEditPlan = (planCodeVal: string) => {
+    setEditPlan(planCodeVal)
+    const found = plans.find((p) => p.id.toUpperCase() === planCodeVal.toUpperCase())
+    if (found) {
+      setEditFee(found.feePercentage)
+      setEditMonthlyPrice(found.monthlyPrice)
+    }
+  }
+
+  // Verificar token de Mercado Pago en vivo desde SuperAdmin
+  const handleVerifyMpToken = async (tokenToTest: string, isEditMode: boolean) => {
+    if (!tokenToTest.trim()) {
+      setMpVerifyStatus({
+        ok: false,
+        text: 'Ingresá primero el Access Token de Mercado Pago (APP_USR-... o TEST-...).',
+      })
+      return
+    }
+    setTestingMpToken(true)
+    setMpVerifyStatus(null)
+    try {
+      const res = await fetch('/api/admin/settings/verify-mp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accessToken: tokenToTest.trim() }),
+      })
+      const data = await res.json()
+      if (data.success && data.account) {
+        if (isEditMode && data.account.sellerId) {
+          setEditMpSellerId(data.account.sellerId)
+        } else if (!isEditMode && data.account.sellerId) {
+          setNewMpSellerId(data.account.sellerId)
+        }
+        setMpVerifyStatus({
+          ok: true,
+          text: `${data.message} • Seller ID: ${data.account.sellerId}`,
+        })
+      } else {
+        setMpVerifyStatus({
+          ok: false,
+          text: data.error || 'Token rechazado por Mercado Pago.',
+        })
+      }
+    } catch {
+      setMpVerifyStatus({
+        ok: false,
+        text: 'Error de red al validar con Mercado Pago.',
+      })
+    } finally {
+      setTestingMpToken(false)
+    }
+  }
+
+  // Guardar Plan SaaS (Crear o Editar)
+  const handleSavePlan = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!planCode.trim() || !planName.trim()) return
+
+    setSavingPlan(true)
+    try {
+      const res = await fetch('/api/superadmin/plans', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: planCode.trim().toUpperCase(),
+          name: planName.trim(),
+          description: planDescription.trim(),
+          feePercentage: Number(planFee),
+          monthlyPrice: Number(planMonthlyPrice),
+          maxProducts: Number(planMaxProducts),
+          maxStaff: Number(planMaxStaff),
+          syncTenants: planSyncTenants,
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        showToast(data.message || `Plan "${planName}" guardado con éxito`)
+        setEditingPlan(null)
+        fetchTenants()
+      } else {
+        showToast(data.error || 'Error guardando plan SaaS', 'error')
+      }
+    } catch {
+      showToast('Error de conexión', 'error')
+    } finally {
+      setSavingPlan(false)
+    }
+  }
+
+  // Eliminar Plan SaaS
+  const handleDeletePlan = async (plan: SaasPlanSummary) => {
+    if (!confirm(`¿Seguro que querés eliminar el plan SaaS "${plan.name}" (${plan.id})?`)) return
+    try {
+      const res = await fetch(`/api/superadmin/plans?id=${encodeURIComponent(plan.id)}`, {
+        method: 'DELETE',
+      })
+      const data = await res.json()
+      if (data.success) {
+        showToast(data.message || `Plan ${plan.name} eliminado`)
+        fetchTenants()
+      } else {
+        showToast(data.error || 'No se pudo eliminar el plan', 'error')
+      }
+    } catch {
+      showToast('Error de conexión', 'error')
+    }
+  }
+
+  // Abrir modal de alta de boliche limpio
+  const openCreateTenantModal = () => {
+    const defaultPlan = plans.find((p) => p.id === 'PRO') || plans[0]
+    setNewName('')
+    setNewNightclubName('')
+    setNewSlug('')
+    setSlugTouched(false)
+    setNightclubNameTouched(false)
+    setNewDomain('')
+    setNewPlan(defaultPlan ? defaultPlan.id : 'PRO')
+    setNewFee(defaultPlan ? defaultPlan.feePercentage : 5.0)
+    setNewMonthlyPrice(defaultPlan ? defaultPlan.monthlyPrice : 45000)
+    setNewMpSellerId('')
+    setNewMpPublicKey('')
+    setNewMpAccessToken('')
+    setNewMpWebhookSecret('')
+    setMpVerifyStatus(null)
+    setShowCreateModal(true)
   }
 
   // Abrir modal de edición con datos pre-cargados
@@ -193,6 +391,7 @@ export default function SuperAdminPage() {
     setEditSlug(t.slug)
     setEditDomain(t.domain || '')
     setEditFee(t.feePercentage)
+    setEditMonthlyPrice(t.subscriptionPriceMonthly || 0)
     setEditPlan(t.plan || 'PRO')
     setEditBrandColor(t.brandColor || '#8B5CF6')
     setEditAccentColor(t.accentColor || '#EC4899')
@@ -204,6 +403,8 @@ export default function SuperAdminPage() {
     setEditMpSellerId(t.mpSellerId || '')
     setEditMpPublicKey(t.mpPublicKey || '')
     setEditMpAccessToken(t.mpAccessTokenEnc || '')
+    setEditMpWebhookSecret(t.mpWebhookSecret || '')
+    setMpVerifyStatus(null)
   }
 
   // Crear nuevo boliche
@@ -221,6 +422,7 @@ export default function SuperAdminPage() {
           slug: newSlug,
           domain: newDomain || undefined,
           feePercentage: newFee,
+          subscriptionPriceMonthly: newMonthlyPrice,
           plan: newPlan,
           brandColor: newBrandColor,
           accentColor: newAccentColor,
@@ -230,6 +432,7 @@ export default function SuperAdminPage() {
           mpSellerId: newMpSellerId || undefined,
           mpPublicKey: newMpPublicKey || undefined,
           mpAccessTokenEnc: newMpAccessToken || undefined,
+          mpWebhookSecret: newMpWebhookSecret || undefined,
           seedSampleProducts,
         }),
       })
@@ -237,18 +440,11 @@ export default function SuperAdminPage() {
       if (data.success) {
         showToast(`Boliche "${newName}" provisionado con éxito`)
         setShowCreateModal(false)
-        setNewName('')
-        setNewSlug('')
-        setNewDomain('')
-        setNewNightclubName('')
-        setNewMpSellerId('')
-        setNewMpPublicKey('')
-        setNewMpAccessToken('')
         fetchTenants()
       } else {
         showToast(data.error || 'Error al crear boliche', 'error')
       }
-    } catch (err) {
+    } catch {
       showToast('Error de conexión', 'error')
     } finally {
       setCreating(false)
@@ -271,6 +467,7 @@ export default function SuperAdminPage() {
           slug: editSlug,
           domain: editDomain || null,
           feePercentage: editFee,
+          subscriptionPriceMonthly: editMonthlyPrice,
           plan: editPlan,
           brandColor: editBrandColor,
           accentColor: editAccentColor,
@@ -282,6 +479,7 @@ export default function SuperAdminPage() {
           mpSellerId: editMpSellerId || null,
           mpPublicKey: editMpPublicKey || null,
           mpAccessTokenEnc: editMpAccessToken || null,
+          mpWebhookSecret: editMpWebhookSecret || null,
         }),
       })
       const data = await res.json()
@@ -614,7 +812,7 @@ export default function SuperAdminPage() {
             </button>
 
             <button
-              onClick={() => setShowCreateModal(true)}
+              onClick={openCreateTenantModal}
               className="px-4 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-purple-600/30 transition-all cursor-pointer active:scale-95"
             >
               <PlusCircle className="w-4 h-4" />
@@ -650,7 +848,7 @@ export default function SuperAdminPage() {
                 ${globalFees.toLocaleString('es-AR')}
               </div>
               <div className="text-xs text-emerald-200/60 mt-1">
-                Ingreso neto SaaS (Take-rate promedio)
+                Ingreso neto SaaS (Take-rate sobre ventas)
               </div>
             </div>
 
@@ -684,9 +882,9 @@ export default function SuperAdminPage() {
           </div>
         </section>
 
-        {/* LISTA Y GESTIÓN DE BOLICHES O USUARIOS */}
+        {/* LISTA Y GESTIÓN DE BOLICHES, PLANES SAAS O USUARIOS */}
         <main className="px-4 md:px-8 pb-16 max-w-7xl mx-auto w-full flex-1">
-          <div className="flex items-center gap-2 border-b border-gray-800 pb-4 mb-6">
+          <div className="flex flex-wrap items-center gap-2 border-b border-gray-800 pb-4 mb-6">
             <button
               onClick={() => setActiveSection('tenants')}
               className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer ${
@@ -697,6 +895,18 @@ export default function SuperAdminPage() {
             >
               <Building2 className="w-4 h-4" />
               <span>Boliches Adheridos ({tenants.length})</span>
+            </button>
+
+            <button
+              onClick={() => setActiveSection('plans')}
+              className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer ${
+                activeSection === 'plans'
+                  ? 'bg-cyan-600/20 text-cyan-300 border border-cyan-500/50'
+                  : 'text-gray-400 hover:text-white hover:bg-gray-900'
+              }`}
+            >
+              <Sliders className="w-4 h-4" />
+              <span>Planes SaaS y Comisiones ({plans.length})</span>
             </button>
 
             <button
@@ -717,6 +927,138 @@ export default function SuperAdminPage() {
               allowSuperAdminRole={true}
               availableTenants={tenants.map((t) => ({ id: t.id, name: t.name, slug: t.slug }))}
             />
+          ) : activeSection === 'plans' ? (
+            <div className="space-y-6">
+              <div className="bg-gradient-to-r from-cyan-950/40 via-gray-900 to-purple-950/30 border border-cyan-800/40 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-base font-black text-white flex items-center gap-2">
+                    <Sliders className="w-4 h-4 text-cyan-400" />
+                    <span>Configuración de Planes SaaS, Comisiones y Límites Operativos</span>
+                  </h3>
+                  <p className="text-xs text-gray-300 mt-1 max-w-2xl">
+                    Cada plan define el porcentaje de comisión (take-rate) sobre las ventas de Mercado Pago, el abono mensual de suscripción, el límite máximo de bebidas en carta y el límite de cuentas de personal/bartenders. Al asignar un plan a un boliche, estas reglas se aplican de forma real y automática.
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => {
+                    setIsNewPlan(true)
+                    setPlanCode('')
+                    setPlanName('')
+                    setPlanDescription('')
+                    setPlanFee(5.0)
+                    setPlanMonthlyPrice(35000)
+                    setPlanMaxProducts(50)
+                    setPlanMaxStaff(10)
+                    setPlanSyncTenants(true)
+                    setEditingPlan({
+                      id: '',
+                      name: '',
+                      description: '',
+                      feePercentage: 5.0,
+                      monthlyPrice: 35000,
+                      maxProducts: 50,
+                      maxStaff: 10,
+                      isActive: true,
+                      sortOrder: plans.length + 1,
+                    })
+                  }}
+                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-purple-600 hover:from-cyan-500 hover:to-purple-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-cyan-950/50 shrink-0 cursor-pointer"
+                >
+                  <PlusCircle className="w-4 h-4" />
+                  <span>Nuevo Plan SaaS</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                {plans.map((p) => (
+                  <div
+                    key={p.id}
+                    className="bg-gray-900/80 border border-gray-800 hover:border-cyan-500/40 rounded-2xl p-6 flex flex-col justify-between transition-all shadow-xl"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-2 mb-3">
+                        <span className="px-3 py-1 rounded-lg bg-purple-950/60 border border-purple-700/50 text-purple-300 font-mono text-xs font-bold uppercase">
+                          {p.id}
+                        </span>
+                        <span className="text-xs text-gray-400 font-mono">
+                          {p.tenantsCount || 0} boliche(s) adherido(s)
+                        </span>
+                      </div>
+
+                      <h4 className="text-xl font-black text-white">{p.name}</h4>
+                      <p className="text-xs text-gray-400 mt-1 min-h-[32px]">
+                        {p.description || 'Sin descripción'}
+                      </p>
+
+                      <div className="my-4 py-4 border-y border-gray-800 grid grid-cols-2 gap-3">
+                        <div className="bg-black/40 p-3 rounded-xl border border-gray-800/80">
+                          <div className="text-[10px] uppercase text-gray-400 font-semibold">
+                            Comisión Ventas (MP)
+                          </div>
+                          <div className="text-xl font-black text-cyan-400 font-mono mt-0.5">
+                            {p.feePercentage}%
+                          </div>
+                        </div>
+
+                        <div className="bg-black/40 p-3 rounded-xl border border-gray-800/80">
+                          <div className="text-[10px] uppercase text-gray-400 font-semibold">
+                            Abono Mensual
+                          </div>
+                          <div className="text-xl font-black text-emerald-400 font-mono mt-0.5">
+                            ${p.monthlyPrice.toLocaleString('es-AR')}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2 text-xs text-gray-300">
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-400">Límite de productos en carta:</span>
+                          <span className="font-bold text-white font-mono">
+                            {p.maxProducts === 0 ? 'Ilimitados' : `Hasta ${p.maxProducts} productos`}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-400">Límite de personal (Barra/Admin):</span>
+                          <span className="font-bold text-white font-mono">
+                            {p.maxStaff === 0 ? 'Ilimitados' : `Hasta ${p.maxStaff} empleados`}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 pt-5 mt-5 border-t border-gray-800">
+                      <button
+                        onClick={() => {
+                          setIsNewPlan(false)
+                          setEditingPlan(p)
+                          setPlanCode(p.id)
+                          setPlanName(p.name)
+                          setPlanDescription(p.description)
+                          setPlanFee(p.feePercentage)
+                          setPlanMonthlyPrice(p.monthlyPrice)
+                          setPlanMaxProducts(p.maxProducts)
+                          setPlanMaxStaff(p.maxStaff)
+                          setPlanSyncTenants(true)
+                        }}
+                        className="flex-1 py-2 px-3 rounded-xl bg-gray-800 hover:bg-purple-950/60 hover:text-purple-300 border border-gray-700 text-gray-200 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                      >
+                        <Edit2 className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>Configurar Plan</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleDeletePlan(p)}
+                        className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 cursor-pointer transition-colors"
+                        title="Eliminar Plan SaaS"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           ) : (
             <>
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 mb-6">
@@ -743,9 +1085,9 @@ export default function SuperAdminPage() {
                     <thead>
                       <tr className="border-b border-gray-800 text-gray-400 text-xs uppercase tracking-wider bg-gray-950/40">
                         <th className="py-3.5 px-4 font-semibold">Boliche / Slug</th>
-                        <th className="py-3.5 px-4 font-semibold">Plan</th>
+                        <th className="py-3.5 px-4 font-semibold">Plan & Pasarela MP</th>
                         <th className="py-3.5 px-4 font-semibold">Comisión</th>
-                        <th className="py-3.5 px-4 font-semibold">Órdenes</th>
+                        <th className="py-3.5 px-4 font-semibold">Órdenes / Carta</th>
                         <th className="py-3.5 px-4 font-semibold">Recaudación</th>
                         <th className="py-3.5 px-4 font-semibold">Fee SaaS</th>
                         <th className="py-3.5 px-4 font-semibold">Estado</th>
@@ -783,22 +1125,43 @@ export default function SuperAdminPage() {
                             </div>
                           </td>
 
-                          {/* Plan */}
+                          {/* Plan & Estado Mercado Pago */}
                           <td className="py-4 px-4">
-                            <span className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-purple-950/60 border border-purple-800/40 text-purple-300 uppercase tracking-wider">
-                              {t.plan}
-                            </span>
+                            <div className="flex flex-col items-start gap-1">
+                              <span className="px-2.5 py-0.5 rounded-lg text-[11px] font-bold bg-purple-950/60 border border-purple-800/40 text-purple-300 uppercase tracking-wider">
+                                {t.planName || t.plan}
+                              </span>
+                              {t.hasMpConfigured ? (
+                                <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-1">
+                                  <CheckCircle2 className="w-3 h-3" />
+                                  MP Conectado
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-bold text-amber-400 flex items-center gap-1">
+                                  <AlertTriangle className="w-3 h-3" />
+                                  Falta configurar MP
+                                </span>
+                              )}
+                            </div>
                           </td>
 
                           {/* Comisión */}
-                          <td className="py-4 px-4 font-mono font-bold text-cyan-400">
-                            {t.feePercentage}%
+                          <td className="py-4 px-4">
+                            <div className="font-mono font-bold text-cyan-400">{t.feePercentage}%</div>
+                            {t.subscriptionPriceMonthly ? (
+                              <div className="text-[11px] text-gray-500 font-mono">
+                                ${t.subscriptionPriceMonthly.toLocaleString('es-AR')}/mes
+                              </div>
+                            ) : null}
                           </td>
 
                           {/* Órdenes */}
                           <td className="py-4 px-4 text-xs">
                             <div><b className="text-white">{t.totalOrders}</b> órdenes</div>
-                            <div className="text-gray-500">{t.totalProducts} tragos en carta</div>
+                            <div className="text-gray-500">
+                              {t.totalProducts}
+                              {t.maxProducts && t.maxProducts > 0 ? `/${t.maxProducts}` : ''} tragos
+                            </div>
                           </td>
 
                           {/* Recaudación */}
@@ -905,7 +1268,7 @@ export default function SuperAdminPage() {
         {/* MODAL 1: PROVISIONAR NUEVO BOLICHE */}
         {showCreateModal && (
           <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-[#12121a] border border-purple-500/40 rounded-3xl p-6 md:p-8 max-w-lg w-full shadow-2xl relative max-h-[92vh] overflow-y-auto">
+            <div className="bg-[#12121a] border border-purple-500/40 rounded-3xl p-6 md:p-8 max-w-xl w-full shadow-2xl relative max-h-[92vh] overflow-y-auto">
               <button
                 onClick={() => setShowCreateModal(false)}
                 className="absolute top-4 right-4 p-2 text-white/50 hover:text-white rounded-full bg-white/5 hover:bg-white/10"
@@ -920,7 +1283,7 @@ export default function SuperAdminPage() {
                 <div>
                   <h3 className="text-xl font-black text-white">Alta de Nuevo Boliche</h3>
                   <p className="text-xs text-gray-400">
-                    Provisionamiento instantáneo multi-tenant con carta de tragos preconfigurada
+                    Provisionamiento multi-tenant con plan SaaS y pasarela Mercado Pago configurable
                   </p>
                 </div>
               </div>
@@ -934,7 +1297,7 @@ export default function SuperAdminPage() {
                     <input
                       type="text"
                       required
-                      placeholder="Ej: Crobar Buenos Aires"
+                      placeholder="Nombre del boliche o bar"
                       value={newName}
                       onChange={(e) => handleNameChange(e.target.value)}
                       className="w-full bg-black/40 border border-gray-800 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-purple-500"
@@ -947,9 +1310,12 @@ export default function SuperAdminPage() {
                     </label>
                     <input
                       type="text"
-                      placeholder="Nombre comercial"
+                      placeholder="Nombre comercial en la carta"
                       value={newNightclubName}
-                      onChange={(e) => setNewNightclubName(e.target.value)}
+                      onChange={(e) => {
+                        setNightclubNameTouched(true)
+                        setNewNightclubName(e.target.value)
+                      }}
                       className="w-full bg-black/40 border border-gray-800 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-purple-500"
                     />
                   </div>
@@ -960,48 +1326,84 @@ export default function SuperAdminPage() {
                     Slug URL (Único) *
                   </label>
                   <div className="flex items-center bg-black/40 border border-gray-800 rounded-xl px-4 py-2 text-sm text-gray-400 focus-within:border-purple-500">
-                    <span>barraonline.com/</span>
+                    <span>{typeof window !== 'undefined' ? `${window.location.host}/` : '/'}</span>
                     <input
                       type="text"
                       required
-                      placeholder="crobar-ba"
+                      placeholder="slug-del-boliche"
                       value={newSlug}
-                      onChange={(e) => setNewSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                      onChange={(e) => {
+                        setSlugTouched(true)
+                        setNewSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))
+                      }}
                       className="bg-transparent text-white font-mono flex-1 focus:outline-none pl-1"
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-300 uppercase mb-1">
-                      Comisión SaaS (%)
-                    </label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      max="50"
-                      required
-                      value={newFee}
-                      onChange={(e) => setNewFee(Number(e.target.value))}
-                      className="w-full bg-black/40 border border-gray-800 rounded-xl px-4 py-2 text-white font-mono text-sm focus:outline-none focus:border-purple-500"
-                    />
+                <div className="p-3.5 rounded-2xl bg-black/40 border border-gray-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider text-cyan-300">
+                      Plan SaaS y Reglas de Monetización
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowCreateModal(false)
+                        setActiveSection('plans')
+                      }}
+                      className="text-[11px] text-cyan-400 hover:underline cursor-pointer"
+                    >
+                      Configurar planes →
+                    </button>
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-300 uppercase mb-1">
-                      Plan SaaS
-                    </label>
-                    <select
-                      value={newPlan}
-                      onChange={(e) => setNewPlan(e.target.value)}
-                      className="w-full bg-black/40 border border-gray-800 rounded-xl px-4 py-2 text-white text-sm focus:outline-none focus:border-purple-500"
-                    >
-                      <option value="STARTER">STARTER</option>
-                      <option value="PRO">PRO</option>
-                      <option value="ENTERPRISE">ENTERPRISE</option>
-                    </select>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-300 uppercase mb-1">
+                        Plan SaaS
+                      </label>
+                      <select
+                        value={newPlan}
+                        onChange={(e) => handleSelectNewPlan(e.target.value)}
+                        className="w-full bg-[#181822] border border-gray-800 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500"
+                      >
+                        {plans.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name} ({p.feePercentage}%)
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-300 uppercase mb-1">
+                        Comisión SaaS (%)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        max="50"
+                        required
+                        value={newFee}
+                        onChange={(e) => setNewFee(Number(e.target.value))}
+                        className="w-full bg-[#181822] border border-gray-800 rounded-xl px-3 py-2 text-white font-mono text-sm focus:outline-none focus:border-purple-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-300 uppercase mb-1">
+                        Abono Mensual ($)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={newMonthlyPrice}
+                        onChange={(e) => setNewMonthlyPrice(Number(e.target.value))}
+                        className="w-full bg-[#181822] border border-gray-800 rounded-xl px-3 py-2 text-white font-mono text-sm focus:outline-none focus:border-purple-500"
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -1050,11 +1452,11 @@ export default function SuperAdminPage() {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-gray-300 uppercase mb-1">
-                      Dominio Personalizado
+                      Dominio Personalizado (Opcional)
                     </label>
                     <input
                       type="text"
-                      placeholder="barra.crobar.com.ar"
+                      placeholder="Ej: barra.miboliche.com"
                       value={newDomain}
                       onChange={(e) => setNewDomain(e.target.value)}
                       className="w-full bg-black/40 border border-gray-800 rounded-xl px-3 py-2 text-xs text-white"
@@ -1072,6 +1474,53 @@ export default function SuperAdminPage() {
                       className="w-full bg-black/40 border border-gray-800 rounded-xl px-3 py-2 text-xs text-white font-mono"
                     />
                   </div>
+                </div>
+
+                {/* Credenciales Mercado Pago opcionales en el alta (o las configura luego el admin de la tienda) */}
+                <div className="p-3.5 rounded-2xl bg-black/40 border border-gray-800 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider text-emerald-300 flex items-center gap-1.5">
+                      <CreditCard className="w-3.5 h-3.5" />
+                      <span>Pasarela Mercado Pago (Opcional en alta)</span>
+                    </span>
+                    <button
+                      type="button"
+                      disabled={testingMpToken}
+                      onClick={() => handleVerifyMpToken(newMpAccessToken, false)}
+                      className="px-2.5 py-1 rounded-lg bg-emerald-950/60 hover:bg-emerald-900/60 border border-emerald-700/50 text-emerald-300 text-[11px] font-bold cursor-pointer"
+                    >
+                      {testingMpToken ? 'Validando...' : 'Probar Access Token'}
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <input
+                      type="password"
+                      placeholder="MP Access Token (APP_USR-...)"
+                      value={newMpAccessToken}
+                      onChange={(e) => setNewMpAccessToken(e.target.value)}
+                      className="w-full bg-[#181822] border border-gray-800 rounded-xl px-3 py-2 text-xs text-white font-mono"
+                    />
+                    <input
+                      type="text"
+                      placeholder="MP Public Key (APP_USR-...)"
+                      value={newMpPublicKey}
+                      onChange={(e) => setNewMpPublicKey(e.target.value)}
+                      className="w-full bg-[#181822] border border-gray-800 rounded-xl px-3 py-2 text-xs text-white font-mono"
+                    />
+                  </div>
+
+                  {mpVerifyStatus && (
+                    <div
+                      className={`p-2.5 rounded-xl text-xs border ${
+                        mpVerifyStatus.ok
+                          ? 'bg-emerald-950/50 border-emerald-700/50 text-emerald-200'
+                          : 'bg-rose-950/50 border-rose-700/50 text-rose-200'
+                      }`}
+                    >
+                      {mpVerifyStatus.text}
+                    </div>
+                  )}
                 </div>
 
                 <label className="flex items-center gap-2.5 p-3 bg-purple-950/30 border border-purple-800/40 rounded-xl text-xs text-purple-200 cursor-pointer">
@@ -1124,7 +1573,7 @@ export default function SuperAdminPage() {
                 <div>
                   <h3 className="text-xl font-black text-white">Editar Configuración del Boliche</h3>
                   <p className="text-xs text-gray-400">
-                    Modificá credenciales, comisiones, colores, slug e integración con pasarela de pago.
+                    Modificá credenciales, plan SaaS, comisiones, colores, slug e integración con Mercado Pago.
                   </p>
                 </div>
               </div>
@@ -1187,7 +1636,7 @@ export default function SuperAdminPage() {
                       </label>
                       <input
                         type="text"
-                        placeholder="ej: barra.crobar.com"
+                        placeholder="ej: barra.miboliche.com"
                         value={editDomain}
                         onChange={(e) => setEditDomain(e.target.value)}
                         className="w-full bg-[#181822] border border-gray-800 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-purple-500 font-mono"
@@ -1274,12 +1723,41 @@ export default function SuperAdminPage() {
 
                 {/* Sección 3: Reglas SaaS y Estado */}
                 <div className="p-4 rounded-2xl bg-black/40 border border-gray-800 space-y-3">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-cyan-300 flex items-center gap-1.5">
-                    <Percent className="w-3.5 h-3.5" />
-                    <span>Monetización SaaS y Licencia</span>
-                  </h4>
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-cyan-300 flex items-center gap-1.5">
+                      <Percent className="w-3.5 h-3.5" />
+                      <span>Monetización SaaS y Licencia</span>
+                    </h4>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingTenant(null)
+                        setActiveSection('plans')
+                      }}
+                      className="text-[11px] text-cyan-400 hover:underline cursor-pointer"
+                    >
+                      Gestionar Planes SaaS →
+                    </button>
+                  </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-300 mb-1">
+                        Plan Plataforma
+                      </label>
+                      <select
+                        value={editPlan}
+                        onChange={(e) => handleSelectEditPlan(e.target.value)}
+                        className="w-full bg-[#181822] border border-gray-800 rounded-xl px-3 py-2 text-sm text-white"
+                      >
+                        {plans.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name} ({p.feePercentage}%)
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
                     <div>
                       <label className="block text-xs font-semibold text-gray-300 mb-1">
                         Comisión Take-Rate (%)
@@ -1297,17 +1775,15 @@ export default function SuperAdminPage() {
 
                     <div>
                       <label className="block text-xs font-semibold text-gray-300 mb-1">
-                        Plan Plataforma
+                        Abono Mensual ($)
                       </label>
-                      <select
-                        value={editPlan}
-                        onChange={(e) => setEditPlan(e.target.value)}
-                        className="w-full bg-[#181822] border border-gray-800 rounded-xl px-3 py-2 text-sm text-white"
-                      >
-                        <option value="STARTER">STARTER</option>
-                        <option value="PRO">PRO</option>
-                        <option value="ENTERPRISE">ENTERPRISE</option>
-                      </select>
+                      <input
+                        type="number"
+                        min="0"
+                        value={editMonthlyPrice}
+                        onChange={(e) => setEditMonthlyPrice(Number(e.target.value))}
+                        className="w-full bg-[#181822] border border-gray-800 rounded-xl px-3 py-2 text-sm text-white font-mono"
+                      />
                     </div>
 
                     <div>
@@ -1342,28 +1818,38 @@ export default function SuperAdminPage() {
 
                 {/* Sección 4: Credenciales Mercado Pago */}
                 <div className="p-4 rounded-2xl bg-black/40 border border-gray-800 space-y-3">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-300 flex items-center gap-1.5">
-                    <CreditCard className="w-3.5 h-3.5" />
-                    <span>Pasarela Mercado Pago (Split / Cobro Directo)</span>
-                  </h4>
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-300 flex items-center gap-1.5">
+                      <CreditCard className="w-3.5 h-3.5" />
+                      <span>Pasarela Mercado Pago de la Tienda</span>
+                    </h4>
+                    <button
+                      type="button"
+                      disabled={testingMpToken}
+                      onClick={() => handleVerifyMpToken(editMpAccessToken, true)}
+                      className="px-3 py-1 rounded-lg bg-emerald-950/60 hover:bg-emerald-900/60 border border-emerald-700/50 text-emerald-300 text-xs font-bold cursor-pointer flex items-center gap-1.5"
+                    >
+                      {testingMpToken && <Loader2 className="w-3 h-3 animate-spin" />}
+                      <span>{testingMpToken ? 'Verificando...' : 'Probar Conexión con Mercado Pago'}</span>
+                    </button>
+                  </div>
 
-                  <div className="space-y-2.5">
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-300 mb-1">
-                        MP Public Key
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="APP_USR-..."
-                        value={editMpPublicKey}
-                        onChange={(e) => setEditMpPublicKey(e.target.value)}
-                        className="w-full bg-[#181822] border border-gray-800 rounded-xl px-3.5 py-2 text-xs text-white font-mono"
-                      />
+                  {mpVerifyStatus && (
+                    <div
+                      className={`p-3 rounded-xl text-xs border ${
+                        mpVerifyStatus.ok
+                          ? 'bg-emerald-950/50 border-emerald-700/50 text-emerald-200'
+                          : 'bg-rose-950/50 border-rose-700/50 text-rose-200'
+                      }`}
+                    >
+                      {mpVerifyStatus.text}
                     </div>
+                  )}
 
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     <div>
                       <label className="block text-xs font-semibold text-gray-300 mb-1">
-                        MP Access Token (Producción)
+                        MP Access Token (APP_USR-... o TEST-...)
                       </label>
                       <input
                         type="password"
@@ -1376,13 +1862,39 @@ export default function SuperAdminPage() {
 
                     <div>
                       <label className="block text-xs font-semibold text-gray-300 mb-1">
-                        MP Seller ID (Opcional)
+                        MP Public Key (APP_USR-... o TEST-...)
                       </label>
                       <input
                         type="text"
-                        placeholder="ID de vendedor de Mercado Pago"
+                        placeholder="APP_USR-..."
+                        value={editMpPublicKey}
+                        onChange={(e) => setEditMpPublicKey(e.target.value)}
+                        className="w-full bg-[#181822] border border-gray-800 rounded-xl px-3.5 py-2 text-xs text-white font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-300 mb-1">
+                        MP Seller ID / Collector ID
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Se autocompleta al probar el token"
                         value={editMpSellerId}
                         onChange={(e) => setEditMpSellerId(e.target.value)}
+                        className="w-full bg-[#181822] border border-gray-800 rounded-xl px-3.5 py-2 text-xs text-white font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-300 mb-1">
+                        MP Webhook Secret (Opcional)
+                      </label>
+                      <input
+                        type="password"
+                        placeholder="Clave secreta de firma de Webhook"
+                        value={editMpWebhookSecret}
+                        onChange={(e) => setEditMpWebhookSecret(e.target.value)}
                         className="w-full bg-[#181822] border border-gray-800 rounded-xl px-3.5 py-2 text-xs text-white font-mono"
                       />
                     </div>
@@ -1404,6 +1916,174 @@ export default function SuperAdminPage() {
                   >
                     {savingEdit && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                     <span>{savingEdit ? 'Guardando Cambios...' : 'Guardar Todo'}</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL 5: CREAR / EDITAR PLAN SAAS */}
+        {editingPlan && (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-[#12121a] border border-cyan-500/40 rounded-3xl p-6 md:p-8 max-w-lg w-full shadow-2xl relative max-h-[92vh] overflow-y-auto">
+              <button
+                onClick={() => setEditingPlan(null)}
+                className="absolute top-4 right-4 p-2 text-white/50 hover:text-white rounded-full bg-white/5 hover:bg-white/10 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-cyan-600 to-purple-600 flex items-center justify-center text-white font-bold shadow-lg shadow-cyan-600/30">
+                  <Sliders className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-white">
+                    {isNewPlan ? 'Crear Nuevo Plan SaaS' : `Configurar Plan ${planName}`}
+                  </h3>
+                  <p className="text-xs text-gray-400">
+                    Definí comisión por venta, abono mensual y cupos operativos del plan.
+                  </p>
+                </div>
+              </div>
+
+              <form onSubmit={handleSavePlan} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-300 uppercase mb-1">
+                      Código Identificador *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      disabled={!isNewPlan}
+                      placeholder="Ej: VIP_CLUB"
+                      value={planCode}
+                      onChange={(e) =>
+                        setPlanCode(e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, '_'))
+                      }
+                      className="w-full bg-black/40 border border-gray-800 rounded-xl px-3.5 py-2.5 text-sm text-white font-mono focus:outline-none focus:border-cyan-500 disabled:opacity-60"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-300 uppercase mb-1">
+                      Nombre Visible *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ej: Plan VIP Club"
+                      value={planName}
+                      onChange={(e) => setPlanName(e.target.value)}
+                      className="w-full bg-black/40 border border-gray-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-cyan-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 uppercase mb-1">
+                    Descripción del Plan
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej: Para discotecas grandes con múltiples barras..."
+                    value={planDescription}
+                    onChange={(e) => setPlanDescription(e.target.value)}
+                    className="w-full bg-black/40 border border-gray-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-300 uppercase mb-1">
+                      Comisión sobre Ventas (%) *
+                    </label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      max="100"
+                      required
+                      value={planFee}
+                      onChange={(e) => setPlanFee(Number(e.target.value))}
+                      className="w-full bg-black/40 border border-gray-800 rounded-xl px-3.5 py-2.5 text-sm text-cyan-300 font-mono font-bold focus:outline-none focus:border-cyan-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-300 uppercase mb-1">
+                      Abono Mensual ($ ARS) *
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      required
+                      value={planMonthlyPrice}
+                      onChange={(e) => setPlanMonthlyPrice(Number(e.target.value))}
+                      className="w-full bg-black/40 border border-gray-800 rounded-xl px-3.5 py-2.5 text-sm text-emerald-300 font-mono font-bold focus:outline-none focus:border-cyan-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-300 uppercase mb-1">
+                      Máx. Productos (0 = Ilimitado)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      required
+                      value={planMaxProducts}
+                      onChange={(e) => setPlanMaxProducts(Number(e.target.value))}
+                      className="w-full bg-black/40 border border-gray-800 rounded-xl px-3.5 py-2.5 text-sm text-white font-mono focus:outline-none focus:border-cyan-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-300 uppercase mb-1">
+                      Máx. Personal (0 = Ilimitado)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      required
+                      value={planMaxStaff}
+                      onChange={(e) => setPlanMaxStaff(Number(e.target.value))}
+                      className="w-full bg-black/40 border border-gray-800 rounded-xl px-3.5 py-2.5 text-sm text-white font-mono focus:outline-none focus:border-cyan-500"
+                    />
+                  </div>
+                </div>
+
+                <label className="flex items-center gap-2.5 p-3 rounded-xl bg-cyan-950/30 border border-cyan-800/40 text-xs text-cyan-200 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={planSyncTenants}
+                    onChange={(e) => setPlanSyncTenants(e.target.checked)}
+                    className="rounded border-cyan-700 bg-black/50 text-cyan-500"
+                  />
+                  <span>
+                    Actualizar automáticamente la comisión y el abono mensual en todos los boliches que tengan asignado este plan actualmente
+                  </span>
+                </label>
+
+                <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-800">
+                  <button
+                    type="button"
+                    onClick={() => setEditingPlan(null)}
+                    className="px-4 py-2.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-semibold cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingPlan}
+                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-purple-600 hover:from-cyan-500 hover:to-purple-500 text-white text-xs font-bold shadow-lg shadow-cyan-950/50 disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
+                  >
+                    {savingPlan && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    <span>{savingPlan ? 'Guardando Plan...' : 'Guardar Plan SaaS'}</span>
                   </button>
                 </div>
               </form>

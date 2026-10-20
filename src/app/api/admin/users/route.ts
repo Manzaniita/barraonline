@@ -10,6 +10,7 @@ import {
 import { ADMIN_ROLES, requireApiRole } from '@/lib/session'
 import { Role } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
+import { getSaasPlanById } from '@/lib/saas-plans'
 
 export const dynamic = 'force-dynamic'
 
@@ -143,6 +144,40 @@ export async function POST(req: NextRequest) {
     if (isSuper && tenantId && !effectiveTenant) {
       const t = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { slug: true } })
       if (t) effectiveTenant = t.slug
+    }
+
+    // Validar límite de personal del Plan SaaS si el usuario es staff del boliche
+    if (effectiveTenant && (role === 'BARTENDER' || role === 'CLUB_ADMIN')) {
+      const tenantRecord = await prisma.tenant.findUnique({
+        where: { slug: effectiveTenant },
+        include: {
+          _count: {
+            select: {
+              users: {
+                where: { role: { in: ['BARTENDER', 'CLUB_ADMIN'] } },
+              },
+            },
+          },
+        },
+      })
+      if (tenantRecord) {
+        const cfg = (tenantRecord.themeConfig as any) || {}
+        const planCode = String(cfg.plan || 'PRO').toUpperCase()
+        const planDetails = await getSaasPlanById(planCode)
+        if (
+          planDetails &&
+          planDetails.maxStaff > 0 &&
+          tenantRecord._count.users >= planDetails.maxStaff
+        ) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: `El boliche alcanzó el límite de ${planDetails.maxStaff} cuentas de personal permitido por su Plan ${planDetails.name}.`,
+            },
+            { status: 400 }
+          )
+        }
+      }
     }
 
     const createdUser = await createUserFromAdmin({

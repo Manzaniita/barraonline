@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   CustomerProfile,
@@ -24,11 +24,22 @@ export function RoleGuard({
   const [authorized, setAuthorized] = useState(false)
   const [checking, setChecking] = useState(true)
 
+  // Clave estable para evitar que re-renders de los formularios disparen re-verificación ni desmonten inputs
+  const rolesKey = allowedRoles.join(',')
+  const verifiedKeyRef = useRef<string | null>(null)
+
   useEffect(() => {
+    const contextKey = `${rolesKey}::${tenantSlug || ''}`
+    if (verifiedKeyRef.current === contextKey && authorized) {
+      return
+    }
+
     let active = true
 
     const verifyCurrentSession = async () => {
-      setChecking(true)
+      if (verifiedKeyRef.current !== contextKey) {
+        setChecking(true)
+      }
       try {
         const res = await fetch('/api/auth/me', { cache: 'no-store' })
         const data = await res.json()
@@ -49,11 +60,13 @@ export function RoleGuard({
           }
           saveCustomerProfile(synced)
 
-          const roleOk = Boolean(synced.role && allowedRoles.includes(synced.role))
+          const allowedList = rolesKey.split(',')
+          const roleOk = Boolean(synced.role && allowedList.includes(synced.role))
           const tenantOk =
             synced.role === 'SUPER_ADMIN' || !tenantSlug || data.user.tenantSlug === tenantSlug
 
           if (roleOk && tenantOk) {
+            verifiedKeyRef.current = contextKey
             setAuthorized(true)
             setChecking(false)
             return
@@ -76,7 +89,7 @@ export function RoleGuard({
     return () => {
       active = false
     }
-  }, [allowedRoles, router, tenantSlug])
+  }, [rolesKey, router, tenantSlug, authorized])
 
   if (checking || !authorized) {
     return (

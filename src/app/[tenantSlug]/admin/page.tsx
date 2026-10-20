@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -99,7 +99,22 @@ export default function ClubAdminPage() {
   const [storeMpAccessToken, setStoreMpAccessToken] = useState('')
   const [storeMpWebhookSecret, setStoreMpWebhookSecret] = useState('')
   const [savingSettings, setSavingSettings] = useState(false)
-  const [settingsInitialized, setSettingsInitialized] = useState(false)
+  const settingsInitializedRef = useRef(false)
+  const [verifyingMp, setVerifyingMp] = useState(false)
+  const [mpVerifyResult, setMpVerifyResult] = useState<{
+    valid: boolean
+    account?: {
+      sellerId: string
+      nickname: string
+      email: string
+      firstName: string
+      lastName: string
+      countryId: string
+      siteId: string
+      mode: 'PRODUCTION' | 'SANDBOX'
+    }
+    error?: string
+  } | null>(null)
 
   // Modal para registrar rotura
   const [showBreakageModal, setShowBreakageModal] = useState(false)
@@ -127,7 +142,7 @@ export default function ClubAdminPage() {
       const data = await res.json()
       if (data.success && data.metrics) {
         setMetrics(data.metrics)
-        if (!settingsInitialized && data.metrics.tenantSettings) {
+        if (!settingsInitializedRef.current && data.metrics.tenantSettings) {
           const ts = data.metrics.tenantSettings
           setStoreName(ts.name || '')
           setStoreNightclubName(ts.themeConfig?.nightclubName || ts.name || '')
@@ -141,7 +156,7 @@ export default function ClubAdminPage() {
           setStoreExpirationHour(ts.defaultExpirationHour || '07:00')
           setStoreMpSellerId(ts.mpSellerId || '')
           setStoreMpPublicKey(ts.mpPublicKey || '')
-          setSettingsInitialized(true)
+          settingsInitializedRef.current = true
         }
       } else {
         showToast(data.error || 'No se pudieron cargar las métricas', 'error')
@@ -377,6 +392,46 @@ export default function ClubAdminPage() {
     }
   }
 
+  // Verificar credenciales de Mercado Pago en vivo
+  const handleVerifyMpConnection = async () => {
+    setVerifyingMp(true)
+    setMpVerifyResult(null)
+    try {
+      const res = await fetch('/api/admin/settings/verify-mp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenantSlug,
+          accessToken: storeMpAccessToken.trim() || undefined,
+        }),
+      })
+      const data = await res.json()
+      if (data.success && data.valid && data.account) {
+        setMpVerifyResult({ valid: true, account: data.account })
+        if (!storeMpSellerId.trim() && data.account.sellerId) {
+          setStoreMpSellerId(data.account.sellerId)
+        }
+        showToast(
+          `Conexión verificada con Mercado Pago (${data.account.nickname || data.account.email}) [${data.account.mode}]`
+        )
+      } else {
+        setMpVerifyResult({
+          valid: false,
+          error: data.error || 'No se pudo validar el Access Token con Mercado Pago.',
+        })
+        showToast(data.error || 'Token de Mercado Pago inválido', 'error')
+      }
+    } catch {
+      setMpVerifyResult({
+        valid: false,
+        error: 'Error de red intentando contactar a Mercado Pago.',
+      })
+      showToast('Error de red al verificar Mercado Pago', 'error')
+    } finally {
+      setVerifyingMp(false)
+    }
+  }
+
   // Guardar rotura / merma
   const handleSaveBreakage = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -538,6 +593,33 @@ export default function ClubAdminPage() {
             </Link>
           </div>
         </header>
+
+      {/* ALERTA DE MERCADO PAGO NO CONFIGURADO */}
+      {metrics?.tenantSettings && !metrics.tenantSettings.hasMpAccessToken && (
+        <div className="px-4 md:px-8 pt-5 max-w-7xl mx-auto w-full">
+          <div className="bg-amber-950/50 border border-amber-500/40 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center shrink-0">
+                <CreditCard className="w-5 h-5 text-amber-400" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-amber-200 flex items-center gap-2">
+                  Cobros Desactivados: Falta vincular Mercado Pago
+                </h3>
+                <p className="text-xs text-amber-300/80 mt-0.5">
+                  Para que tus clientes puedan comprar bebidas desde la tienda digital y recibir su código QR, debés cargar el <span className="font-mono font-bold text-white">Access Token</span> de tu cuenta de Mercado Pago.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setActiveTab('settings')}
+              className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-black text-xs whitespace-nowrap transition-all shadow-lg shadow-amber-500/20"
+            >
+              Configurar Mercado Pago →
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* METRICAS KPI HERO */}
       <section className="px-4 md:px-8 py-6 max-w-7xl mx-auto w-full">
@@ -1328,20 +1410,102 @@ export default function ClubAdminPage() {
 
             {/* 3. Credenciales de Mercado Pago */}
             <div className="space-y-4 pt-4 border-t border-gray-800">
-              <h3 className="text-sm font-bold text-cyan-300 uppercase tracking-wider flex items-center gap-2">
-                <CreditCard className="w-4 h-4" />
-                Integración Mercado Pago (Cobros en la Tienda)
-              </h3>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-sm font-bold text-cyan-300 uppercase tracking-wider flex items-center gap-2">
+                    <CreditCard className="w-4 h-4" />
+                    Integración Mercado Pago (Cobros en la Tienda)
+                  </h3>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    Obtené tus credenciales en{' '}
+                    <a
+                      href="https://www.mercadopago.com.ar/developers/panel/app"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-cyan-400 hover:underline font-semibold"
+                    >
+                      Mercado Pago Developers (Tus integraciones → Credenciales de producción)
+                    </a>
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`px-3 py-1 rounded-full text-[11px] font-bold border ${
+                      metrics?.tenantSettings?.hasMpAccessToken
+                        ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300'
+                        : 'bg-amber-950/60 border-amber-500/40 text-amber-300'
+                    }`}
+                  >
+                    {metrics?.tenantSettings?.hasMpAccessToken
+                      ? '✓ Mercado Pago Activo'
+                      : '⚠ Sin Access Token Configurado'}
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={handleVerifyMpConnection}
+                    disabled={verifyingMp || (!storeMpAccessToken.trim() && !metrics?.tenantSettings?.hasMpAccessToken)}
+                    className="px-3.5 py-2 rounded-xl bg-cyan-600/20 hover:bg-cyan-600/30 border border-cyan-500/40 text-cyan-300 text-xs font-bold flex items-center gap-1.5 transition-all disabled:opacity-50"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    {verifyingMp ? 'Verificando...' : 'Probar y Validar Conexión'}
+                  </button>
+                </div>
+              </div>
+
+              {mpVerifyResult && (
+                <div
+                  className={`p-3.5 rounded-xl border text-xs ${
+                    mpVerifyResult.valid
+                      ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200'
+                      : 'bg-red-950/40 border-red-500/40 text-red-200'
+                  }`}
+                >
+                  {mpVerifyResult.valid && mpVerifyResult.account ? (
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <span className="font-black text-emerald-300">
+                          ✓ Cuenta de Mercado Pago Verificada:
+                        </span>{' '}
+                        {mpVerifyResult.account.firstName} {mpVerifyResult.account.lastName} (
+                        <span className="font-mono">{mpVerifyResult.account.nickname}</span> —{' '}
+                        {mpVerifyResult.account.email})
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded bg-black/40 font-mono text-[11px]">
+                          Seller ID: {mpVerifyResult.account.sellerId}
+                        </span>
+                        <span
+                          className={`px-2 py-0.5 rounded font-black text-[10px] ${
+                            mpVerifyResult.account.mode === 'PRODUCTION'
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                              : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                          }`}
+                        >
+                          {mpVerifyResult.account.mode}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <span className="font-black text-red-300">✗ Error de validación:</span>{' '}
+                      {mpVerifyResult.error}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-gray-300 mb-1.5">
-                    Seller ID / Collector ID
+                    Access Token de Producción (Obligatorio para cobrar) {metrics?.tenantSettings?.hasMpAccessToken ? '(Configurado ✓ - dejá vacío para mantener)' : ''}
                   </label>
                   <input
-                    type="text"
-                    value={storeMpSellerId}
-                    onChange={(e) => setStoreMpSellerId(e.target.value)}
-                    placeholder="Ej: 123456789"
+                    type="password"
+                    value={storeMpAccessToken}
+                    onChange={(e) => setStoreMpAccessToken(e.target.value)}
+                    placeholder="APP_USR-... (Pegá tu Access Token y tocá Probar Conexión)"
                     className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white font-mono focus:outline-none focus:border-purple-500"
                   />
                 </div>
@@ -1361,20 +1525,20 @@ export default function ClubAdminPage() {
 
                 <div>
                   <label className="block text-xs font-semibold text-gray-300 mb-1.5">
-                    Access Token {metrics?.tenantSettings?.hasMpAccessToken ? '(Configurado ✓ - dejá vacío para mantener)' : ''}
+                    Seller ID / Collector ID (Se autocompleta al validar token)
                   </label>
                   <input
-                    type="password"
-                    value={storeMpAccessToken}
-                    onChange={(e) => setStoreMpAccessToken(e.target.value)}
-                    placeholder="APP_USR-... (Nuevo Access Token)"
+                    type="text"
+                    value={storeMpSellerId}
+                    onChange={(e) => setStoreMpSellerId(e.target.value)}
+                    placeholder="Ej: 123456789"
                     className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white font-mono focus:outline-none focus:border-purple-500"
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-gray-300 mb-1.5">
-                    Webhook Secret {metrics?.tenantSettings?.hasMpWebhookSecret ? '(Configurado ✓ - dejá vacío para mantener)' : ''}
+                    Webhook Secret {metrics?.tenantSettings?.hasMpWebhookSecret ? '(Configurado ✓ - dejá vacío para mantener)' : '(Opcional - Firma HMAC)'}
                   </label>
                   <input
                     type="password"
@@ -1385,7 +1549,61 @@ export default function ClubAdminPage() {
                   />
                 </div>
               </div>
+
+              <div className="bg-gray-950/80 border border-gray-800/80 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-gray-400">
+                <div>
+                  <span className="font-bold text-gray-300">URL de Webhook (Notificaciones IPN/Webhooks):</span>{' '}
+                  el sistema la adjunta automáticamente en cada orden, o podés configurarla en tu panel de Mercado Pago apuntando a:
+                </div>
+                <code className="px-2.5 py-1 rounded bg-gray-900 border border-gray-800 text-cyan-300 font-mono text-[11px] select-all">
+                  {typeof window !== 'undefined' ? `${window.location.origin}/api/webhooks/mercadopago` : '/api/webhooks/mercadopago'}
+                </code>
+              </div>
             </div>
+
+            {/* 4. Plan SaaS Activo y Límites Operativos */}
+            {metrics?.tenantSettings && (
+              <div className="space-y-3 pt-4 border-t border-gray-800">
+                <h3 className="text-sm font-bold text-amber-300 uppercase tracking-wider flex items-center gap-2">
+                  <Sparkles className="w-4 h-4" />
+                  Plan SaaS contratado y Límites Operativos
+                </h3>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-gray-950/70 border border-gray-800 rounded-2xl p-4">
+                  <div>
+                    <span className="text-[11px] text-gray-400 uppercase block">Plan Activo</span>
+                    <span className="text-sm font-black text-white">
+                      {metrics.tenantSettings.planName}
+                    </span>
+                    <span className="text-[10px] font-mono text-purple-400 block">
+                      {metrics.tenantSettings.planCode}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[11px] text-gray-400 uppercase block">Comisión Plataforma</span>
+                    <span className="text-sm font-black text-emerald-400">
+                      {metrics.tenantSettings.feePercentage}% por venta
+                    </span>
+                    <span className="text-[10px] text-gray-500 block">
+                      Abono: ${(metrics.tenantSettings.subscriptionPriceMonthly || 0).toLocaleString('es-AR')}/mes
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[11px] text-gray-400 uppercase block">Límite Catálogo</span>
+                    <span className="text-sm font-black text-white">
+                      {metrics.products?.length || 0} / {metrics.tenantSettings.maxProducts}
+                    </span>
+                    <span className="text-[10px] text-gray-500 block">productos activos/totales</span>
+                  </div>
+                  <div>
+                    <span className="text-[11px] text-gray-400 uppercase block">Límite Staff</span>
+                    <span className="text-sm font-black text-white">
+                      Máx. {metrics.tenantSettings.maxStaff} cuentas
+                    </span>
+                    <span className="text-[10px] text-gray-500 block">Bartenders y Admins</span>
+                  </div>
+                </div>
+              </div>
+            )}
           </form>
         )}
       </main>

@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { Tenant, Product } from '@prisma/client'
-import { getTenantAndCatalog } from '@/lib/catalog-service'
 import {
   getMercadoPagoClient,
   createMercadoPagoPreference,
@@ -10,8 +8,6 @@ import {
   CheckoutItemInput,
 } from '@/lib/mercadopago'
 import crypto from 'crypto'
-
-type TenantWithProducts = Tenant & { products: Product[] }
 
 export async function POST(req: NextRequest) {
   try {
@@ -45,7 +41,19 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // 2. Validar precios, disponibilidad y stock contra el catálogo real del servidor
+    // 2. Validar que la tienda tenga configuradas sus credenciales de Mercado Pago para cobrar
+    const mpToken = dbTenant.mpAccessTokenEnc?.trim() || ''
+    if (!mpToken) {
+      return NextResponse.json(
+        {
+          error:
+            'Esta tienda aún no tiene configurada su cuenta de Mercado Pago para recibir pagos. El administrador del boliche debe vincular su Access Token en Configuración de Tienda.',
+        },
+        { status: 400 }
+      )
+    }
+
+    // 3. Validar precios, disponibilidad y stock contra el catálogo real del servidor
     const verifiedItems: CheckoutItemInput[] = []
     let totalAmount = 0
 
@@ -85,11 +93,54 @@ export async function POST(req: NextRequest) {
 
     const orderId = crypto.randomUUID()
     const expiresAt = calculateExpirationDate(dbTenant.defaultExpirationHour || '07:00')
-    const protocol = req.headers.get('x-forwarded-proto') || 'http'
+    const protocol = req.headers.get('x-forwarded-proto') || 'https'
     const host = req.headers.get('host') || 'localhost:3000'
     const baseUrl = `${protocol}://${host}`
+    const feePercentage = Number(dbTenant.feePercentage || 0)
+    const feeAmount = Number(((totalAmount * feePercentage) / 100).toFixed(2))
 
-    // 3. Persistir orden y descontar stock en transacción en PostgreSQL
+    // 4. Generar preferencia en Mercado Pago ANTES de descontar stock (para evitar órdenes huérfanas si el token es inválido)
+    let preference: {
+      preferenceId?: string
+      initPoint?: string
+      sandboxInitPoint?: string
+    }
+
+    try {
+      const mpClient = getMercadoPagoClient(mpToken)
+      preference = await createMercadoPagoPreference({
+        client: mpClient,
+        tenantSlug,
+        orderId,
+        items: verifiedItems,
+        customer,
+        feePercentage,
+        baseUrl,
+      })
+    } catch (mpErr: any) {
+      console.error('[checkout/preference] Error generando preferencia en Mercado Pago:', mpErr)
+      return NextResponse.json(
+        {
+          error:
+            'No se pudo iniciar el pago con Mercado Pago. Verificá que las credenciales de Mercado Pago configuradas en la tienda sean válidas.',
+        },
+        { status: 502 }
+      )
+    }
+
+    const isTestToken = mpToken.startsWith('TEST-')
+    const redirectUrl = isTestToken
+      ? preference.sandboxInitPoint || preference.initPoint
+      : preference.initPoint || preference.sandboxInitPoint
+
+    if (!redirectUrl) {
+      return NextResponse.json(
+        { error: 'Mercado Pago no devolvió una URL de pago válida.' },
+        { status: 502 }
+      )
+    }
+
+    // 5. Persistir orden en estado PENDING y reservar stock en transacción en PostgreSQL
     try {
       const cleanDni = (customer.dni || '').replace(/\D/g, '') || null
       const cleanEmail = customer.email?.trim().toLowerCase() || null
@@ -151,8 +202,10 @@ export async function POST(req: NextRequest) {
             id: orderId,
             tenantId: dbTenant.id,
             userId: user.id,
-            status: dbTenant.mpAccessTokenEnc ? 'PENDING' : 'ACTIVE',
-            totalAmount: totalAmount,
+            mpPreferenceId: preference.preferenceId || null,
+            status: 'PENDING',
+            totalAmount,
+            feeAmount,
             expiresAt,
             items: {
               create: orderItemsData,
@@ -168,53 +221,13 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // 4. Si el boliche tiene credenciales reales de Mercado Pago configuradas
-    if (dbTenant?.mpAccessTokenEnc) {
-      try {
-        const mpClient = getMercadoPagoClient(dbTenant.mpAccessTokenEnc)
-        const feePercentage = Number(dbTenant.feePercentage || 0)
-
-        const preference = await createMercadoPagoPreference({
-          client: mpClient,
-          tenantSlug,
-          orderId,
-          items: verifiedItems,
-          customer,
-          feePercentage,
-          baseUrl,
-        })
-
-        // Guardar preferenceId en la orden
-        try {
-          await prisma.order.update({
-            where: { id: orderId },
-            data: { mpPreferenceId: preference.preferenceId },
-          })
-        } catch {}
-
-        return NextResponse.json({
-          success: true,
-          orderId,
-          preferenceId: preference.preferenceId,
-          initPoint: preference.initPoint,
-          sandboxInitPoint: preference.sandboxInitPoint,
-          isSimulated: false,
-        })
-      } catch (mpErr) {
-        console.error('[checkout/preference] Error generando preferencia en Mercado Pago:', mpErr)
-        // Fallback a modo demo si las credenciales fallan o son de prueba
-      }
-    }
-
-    // 5. Modo Demo / Simulación (para pruebas instantáneas sin credenciales)
     return NextResponse.json({
       success: true,
       orderId,
-      preferenceId: `pref-demo-${orderId.slice(0, 8)}`,
-      initPoint: `/${tenantSlug}/orden/${orderId}?demo=true`,
-      isSimulated: true,
-      totalAmount,
-      expiresAt: expiresAt.toISOString(),
+      preferenceId: preference.preferenceId,
+      initPoint: redirectUrl,
+      sandboxInitPoint: preference.sandboxInitPoint,
+      isSimulated: false,
     })
   } catch (error) {
     console.error('[checkout/preference] Error inesperado:', error)

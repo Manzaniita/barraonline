@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireApiRole } from '@/lib/session'
+import { getAllSaasPlans, getSaasPlanById } from '@/lib/saas-plans'
 
 export const dynamic = 'force-dynamic'
 
@@ -8,41 +9,47 @@ export async function GET(req: NextRequest) {
   try {
     const auth = await requireApiRole(req, ['SUPER_ADMIN'])
     if (auth.error) return auth.error
-    const tenants = await prisma.tenant.findMany({
-      orderBy: { createdAt: 'desc' },
-      include: {
-        products: true,
-        orders: {
-          select: {
-            id: true,
-            status: true,
-            totalAmount: true,
-            feeAmount: true,
+
+    const [tenants, plans] = await Promise.all([
+      prisma.tenant.findMany({
+        orderBy: { createdAt: 'desc' },
+        include: {
+          products: true,
+          orders: {
+            select: {
+              id: true,
+              status: true,
+              totalAmount: true,
+              feeAmount: true,
+            },
+          },
+          users: {
+            where: { role: 'CLUB_ADMIN' },
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+              phone: true,
+              dni: true,
+              role: true,
+              authProvider: true,
+              createdAt: true,
+              passwordHash: true,
+            },
+          },
+          _count: {
+            select: {
+              orders: true,
+              products: true,
+              users: true,
+            },
           },
         },
-        users: {
-          where: { role: 'CLUB_ADMIN' },
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
-            phone: true,
-            dni: true,
-            role: true,
-            authProvider: true,
-            createdAt: true,
-            passwordHash: true,
-          },
-        },
-        _count: {
-          select: {
-            orders: true,
-            products: true,
-            users: true,
-          },
-        },
-      },
-    })
+      }),
+      getAllSaasPlans(),
+    ])
+
+    const plansMap = new Map(plans.map((p) => [p.id.toUpperCase(), p]))
 
     const tenantSummaries = tenants.map((t) => {
       let totalRevenue = 0
@@ -59,6 +66,8 @@ export async function GET(req: NextRequest) {
       const themeConfig = (t.themeConfig as any) || {}
       const brandColor = themeConfig.brandColor || themeConfig.primaryColor || '#8B5CF6'
       const accentColor = themeConfig.accentColor || themeConfig.secondaryColor || '#EC4899'
+      const planCode = String(themeConfig.plan || 'PRO').toUpperCase()
+      const matchedPlan = plansMap.get(planCode)
 
       return {
         id: t.id,
@@ -68,7 +77,11 @@ export async function GET(req: NextRequest) {
         status: t.isActive ? t.subscriptionStatus : 'SUSPENDED',
         subscriptionStatus: t.subscriptionStatus,
         isActive: t.isActive,
-        plan: themeConfig.plan || 'PRO',
+        plan: planCode,
+        planName: matchedPlan?.name || planCode,
+        subscriptionPriceMonthly: Number(t.subscriptionPriceMonthly || matchedPlan?.monthlyPrice || 0),
+        maxProducts: matchedPlan?.maxProducts ?? 0,
+        maxStaff: matchedPlan?.maxStaff ?? 0,
         brandColor,
         accentColor,
         nightclubName: themeConfig.nightclubName || t.name,
@@ -77,6 +90,8 @@ export async function GET(req: NextRequest) {
         mpSellerId: t.mpSellerId || '',
         mpPublicKey: t.mpPublicKey || '',
         mpAccessTokenEnc: t.mpAccessTokenEnc || '',
+        mpWebhookSecret: t.mpWebhookSecret || '',
+        hasMpConfigured: Boolean(t.mpAccessTokenEnc && t.mpAccessTokenEnc.trim() !== ''),
         feePercentage: Number(t.feePercentage),
         totalOrders: t._count.orders,
         totalProducts: t._count.products,
@@ -101,6 +116,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       success: true,
       tenants: tenantSummaries,
+      plans,
     })
   } catch (error: any) {
     console.error('Error fetching superadmin tenants:', error)
@@ -127,10 +143,12 @@ export async function POST(req: NextRequest) {
       tagline,
       defaultExpirationHour,
       feePercentage,
+      subscriptionPriceMonthly,
       plan,
       mpSellerId,
       mpPublicKey,
       mpAccessTokenEnc,
+      mpWebhookSecret,
       seedSampleProducts = false,
     } = body
 
@@ -154,6 +172,23 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    const selectedPlanCode = String(plan || 'PRO').toUpperCase()
+    const matchedPlan = await getSaasPlanById(selectedPlanCode)
+
+    const effectiveFee =
+      feePercentage !== undefined && feePercentage !== ''
+        ? Number(feePercentage)
+        : matchedPlan
+        ? matchedPlan.feePercentage
+        : 5.0
+
+    const effectiveMonthlyPrice =
+      subscriptionPriceMonthly !== undefined && subscriptionPriceMonthly !== ''
+        ? Number(subscriptionPriceMonthly)
+        : matchedPlan
+        ? matchedPlan.monthlyPrice
+        : 0.0
+
     const primary = brandColor || '#8B5CF6'
     const secondary = accentColor || '#EC4899'
 
@@ -163,13 +198,15 @@ export async function POST(req: NextRequest) {
         name,
         slug: cleanSlug,
         domain: domain?.trim() || null,
-        feePercentage: feePercentage !== undefined ? Number(feePercentage) : 5.0,
+        feePercentage: effectiveFee,
+        subscriptionPriceMonthly: effectiveMonthlyPrice,
         subscriptionStatus: 'ACTIVE',
         isActive: true,
         defaultExpirationHour: defaultExpirationHour || '07:00',
         mpSellerId: mpSellerId?.trim() || null,
         mpPublicKey: mpPublicKey?.trim() || null,
         mpAccessTokenEnc: mpAccessTokenEnc?.trim() || null,
+        mpWebhookSecret: mpWebhookSecret?.trim() || null,
         themeConfig: {
           brandColor: primary,
           accentColor: secondary,
@@ -181,7 +218,7 @@ export async function POST(req: NextRequest) {
           textColor: '#f8fafc',
           nightclubName: nightclubName || name,
           tagline: tagline || 'Barra Rápida QR',
-          plan: plan || 'PRO',
+          plan: selectedPlanCode,
         },
         ...(seedSampleProducts
           ? {
@@ -272,7 +309,8 @@ export async function PATCH(req: NextRequest) {
     }
 
     const existingTheme = (currentTenant.themeConfig as any) || {}
-    const updatedTheme = plan ? { ...existingTheme, plan } : existingTheme
+    const updatedTheme = plan ? { ...existingTheme, plan: String(plan).toUpperCase() } : existingTheme
+    const matchedPlan = plan ? await getSaasPlanById(String(plan)) : null
 
     const updated = await prisma.tenant.update({
       where: { id },
@@ -283,7 +321,12 @@ export async function PATCH(req: NextRequest) {
           ? { isActive: true, subscriptionStatus: 'ACTIVE' }
           : {}),
         ...(plan ? { themeConfig: updatedTheme } : {}),
-        ...(feePercentage !== undefined ? { feePercentage: Number(feePercentage) } : {}),
+        ...(feePercentage !== undefined
+          ? { feePercentage: Number(feePercentage) }
+          : matchedPlan
+          ? { feePercentage: matchedPlan.feePercentage }
+          : {}),
+        ...(matchedPlan ? { subscriptionPriceMonthly: matchedPlan.monthlyPrice } : {}),
       },
     })
 
@@ -315,6 +358,7 @@ export async function PUT(req: NextRequest) {
       slug,
       domain,
       feePercentage,
+      subscriptionPriceMonthly,
       plan,
       brandColor,
       accentColor,
@@ -326,7 +370,7 @@ export async function PUT(req: NextRequest) {
       mpSellerId,
       mpPublicKey,
       mpAccessTokenEnc,
-      seedSampleProducts = false,
+      mpWebhookSecret,
     } = body
 
     if (!id) {
@@ -365,6 +409,8 @@ export async function PUT(req: NextRequest) {
     const existingTheme = (currentTenant.themeConfig as any) || {}
     const primary = brandColor || existingTheme.brandColor || existingTheme.primaryColor || '#8B5CF6'
     const secondary = accentColor || existingTheme.accentColor || existingTheme.secondaryColor || '#EC4899'
+    const selectedPlanCode = String(plan || existingTheme.plan || 'PRO').toUpperCase()
+    const matchedPlan = plan ? await getSaasPlanById(selectedPlanCode) : null
 
     const updatedTheme = {
       ...existingTheme,
@@ -375,7 +421,7 @@ export async function PUT(req: NextRequest) {
       secondaryColor: secondary,
       nightclubName: nightclubName || name || existingTheme.nightclubName || currentTenant.name,
       tagline: tagline !== undefined ? tagline : existingTheme.tagline || 'Barra Rápida QR',
-      plan: plan || existingTheme.plan || 'PRO',
+      plan: selectedPlanCode,
     }
 
     const updated = await prisma.tenant.update({
@@ -384,13 +430,33 @@ export async function PUT(req: NextRequest) {
         name: name !== undefined ? name : currentTenant.name,
         slug: cleanSlug,
         domain: domain !== undefined ? (domain?.trim() || null) : currentTenant.domain,
-        feePercentage: feePercentage !== undefined ? Number(feePercentage) : currentTenant.feePercentage,
-        defaultExpirationHour: defaultExpirationHour !== undefined ? defaultExpirationHour : currentTenant.defaultExpirationHour,
-        subscriptionStatus: subscriptionStatus !== undefined ? subscriptionStatus : currentTenant.subscriptionStatus,
+        feePercentage:
+          feePercentage !== undefined ? Number(feePercentage) : currentTenant.feePercentage,
+        subscriptionPriceMonthly:
+          subscriptionPriceMonthly !== undefined
+            ? Number(subscriptionPriceMonthly)
+            : matchedPlan
+            ? matchedPlan.monthlyPrice
+            : currentTenant.subscriptionPriceMonthly,
+        defaultExpirationHour:
+          defaultExpirationHour !== undefined
+            ? defaultExpirationHour
+            : currentTenant.defaultExpirationHour,
+        subscriptionStatus:
+          subscriptionStatus !== undefined ? subscriptionStatus : currentTenant.subscriptionStatus,
         isActive: isActive !== undefined ? Boolean(isActive) : currentTenant.isActive,
-        mpSellerId: mpSellerId !== undefined ? (mpSellerId?.trim() || null) : currentTenant.mpSellerId,
-        mpPublicKey: mpPublicKey !== undefined ? (mpPublicKey?.trim() || null) : currentTenant.mpPublicKey,
-        mpAccessTokenEnc: mpAccessTokenEnc !== undefined ? (mpAccessTokenEnc?.trim() || null) : currentTenant.mpAccessTokenEnc,
+        mpSellerId:
+          mpSellerId !== undefined ? (mpSellerId?.trim() || null) : currentTenant.mpSellerId,
+        mpPublicKey:
+          mpPublicKey !== undefined ? (mpPublicKey?.trim() || null) : currentTenant.mpPublicKey,
+        mpAccessTokenEnc:
+          mpAccessTokenEnc !== undefined
+            ? mpAccessTokenEnc?.trim() || null
+            : currentTenant.mpAccessTokenEnc,
+        mpWebhookSecret:
+          mpWebhookSecret !== undefined
+            ? mpWebhookSecret?.trim() || null
+            : currentTenant.mpWebhookSecret,
         themeConfig: updatedTheme,
       },
     })

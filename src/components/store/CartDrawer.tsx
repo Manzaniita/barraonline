@@ -231,10 +231,11 @@ export function CartDrawer({ tenantSlug, nightclubName }: CartDrawerProps) {
               )}
             </div>
 
-            {/* Aviso informativo de prueba */}
+            {/* Aviso informativo de pasarela */}
             {checkoutNotice && (
-              <div className="p-3 bg-purple-500/15 border border-purple-500/30 rounded-xl text-purple-200 text-xs leading-relaxed animate-in fade-in">
-                {checkoutNotice}
+              <div className="p-3 bg-rose-500/15 border border-rose-500/30 rounded-xl text-rose-200 text-xs leading-relaxed animate-in fade-in flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                <span>{checkoutNotice}</span>
               </div>
             )}
 

@@ -4,6 +4,8 @@ import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { CheckCircle2, Clock, XCircle, ArrowLeft } from 'lucide-react'
 import { TicketQRCard } from '@/components/store/TicketQRCard'
+import { verifyMercadoPagoOrderPayment } from '@/lib/mercadopago'
+import { generateOrderQrToken } from '@/lib/crypto'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -15,23 +17,29 @@ interface OrderPageProps {
   }>
   searchParams: Promise<{
     status?: string
-    demo?: string
+    payment_id?: string
+    collection_id?: string
+    collection_status?: string
   }>
 }
 
 export default async function OrderPage({ params, searchParams }: OrderPageProps) {
   const { tenantSlug, orderId } = await params
-  const { status, demo } = await searchParams
+  const { status, payment_id, collection_id } = await searchParams
+  const mpPaymentIdParam = payment_id || collection_id || undefined
 
   const order = await prisma.order.findUnique({
     where: { id: orderId },
     include: {
+      user: { select: { dni: true } },
       tenant: {
         select: {
+          id: true,
           slug: true,
           name: true,
           isActive: true,
           subscriptionStatus: true,
+          mpAccessTokenEnc: true,
         },
       },
     },
@@ -47,8 +55,53 @@ export default async function OrderPage({ params, searchParams }: OrderPageProps
     notFound()
   }
 
-  const isApproved = status === 'approved' || demo === 'true' || order.status === 'ACTIVE'
-  const isPending = status === 'pending' || (!isApproved && order.status === 'PENDING')
+  // Si la orden está en PENDING y el usuario vuelve desde Mercado Pago,
+  // verificamos el pago en tiempo real contra la API de Mercado Pago del boliche
+  if (order.status === 'PENDING' && order.tenant.mpAccessTokenEnc) {
+    const verification = await verifyMercadoPagoOrderPayment({
+      accessToken: order.tenant.mpAccessTokenEnc,
+      orderId: order.id,
+      paymentId: mpPaymentIdParam,
+    })
+
+    if (verification.approved) {
+      const { tokenHash } = generateOrderQrToken({
+        orderId: order.id,
+        tenantId: order.tenant.id,
+        userDni: order.user?.dni || undefined,
+        expiresAt: order.expiresAt.toISOString(),
+      })
+
+      try {
+        await prisma.order.update({
+          where: { id: order.id },
+          data: {
+            status: 'ACTIVE',
+            mpPaymentId: verification.mpPaymentId || undefined,
+            qrTokenHash: tokenHash,
+          },
+        })
+        order.status = 'ACTIVE'
+      } catch (err) {
+        console.warn('[OrderPage] Error activando orden tras verificar en MP:', err)
+      }
+    } else if (verification.rejected) {
+      try {
+        await prisma.order.update({
+          where: { id: order.id },
+          data: {
+            status: 'CANCELLED',
+            mpPaymentId: verification.mpPaymentId || undefined,
+          },
+        })
+        order.status = 'CANCELLED'
+      } catch {}
+    }
+  }
+
+  const isApproved = order.status === 'ACTIVE' || order.status === 'DEPLETED'
+  const isRejected = order.status === 'CANCELLED' || status === 'failure'
+  const isPending = !isApproved && !isRejected
 
   return (
     <div className="min-h-screen bg-[#0a0a0c] text-white flex flex-col justify-between p-4 selection:bg-purple-500 selection:text-white">
@@ -81,8 +134,8 @@ export default async function OrderPage({ params, searchParams }: OrderPageProps
           {isApproved
             ? 'Tu pedido ya fue confirmado por Mercado Pago y tus bebidas están listas para ser canjeadas.'
             : isPending
-            ? 'Estamos aguardando la confirmación de Mercado Pago. Te notificaremos en segundos.'
-            : 'El pago fue rechazado o cancelado. Podés reintentar cuando quieras.'}
+            ? 'Estamos aguardando la confirmación de acreditación de Mercado Pago. Recargá la página en unos segundos.'
+            : 'El pago fue rechazado o cancelado en Mercado Pago. Podés volver a la carta y reintentar.'}
         </p>
 
         {/* Card de Detalles de la Orden */}
@@ -106,7 +159,7 @@ export default async function OrderPage({ params, searchParams }: OrderPageProps
                 ? 'bg-amber-500/20 text-amber-300'
                 : 'bg-red-500/20 text-red-300'
             }`}>
-              {isApproved ? 'ACTIVA / LISTA' : isPending ? 'PENDIENTE' : 'CANCELADA'}
+              {isApproved ? 'ACTIVA / LISTA' : isPending ? 'PENDIENTE DE PAGO' : 'CANCELADA'}
             </span>
           </div>
         </div>
@@ -118,7 +171,6 @@ export default async function OrderPage({ params, searchParams }: OrderPageProps
               orderId={orderId}
               tenantSlug={tenantSlug}
               nightclubName={order.tenant.name}
-              demo={demo === 'true'}
             />
           </div>
         )}

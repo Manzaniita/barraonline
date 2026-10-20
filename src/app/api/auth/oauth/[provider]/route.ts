@@ -5,6 +5,7 @@ import {
   OAUTH_STATE_COOKIE,
   buildAuthorizationUrl,
   encodeState,
+  escapeHtml,
   getAppOrigin,
   isOAuthProvider,
   isProviderConfigured,
@@ -280,7 +281,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ provider: s
       <button type="submit" class="submit-btn">Continuar con ${isGoogle ? 'Google' : 'Apple'}</button>
     </form>
 
-    <a href="${returnTo}" class="cancel-link">&larr; Cancelar y volver al boliche</a>
+    <a href="${escapeHtml(returnTo)}" class="cancel-link">&larr; Cancelar y volver al boliche</a>
   </div>
 </body>
 </html>`

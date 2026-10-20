@@ -11,6 +11,7 @@ export async function POST(
   try {
     const { tenantSlug } = await params
     const xSignature = req.headers.get('x-signature')
+    const xRequestId = req.headers.get('x-request-id')
 
     // Extraer data de body o query params
     let paymentId: string | null = null
@@ -48,6 +49,7 @@ export async function POST(
     if (tenant.mpWebhookSecret) {
       const isValidSig = verifyMercadoPagoWebhookSignature({
         xSignature,
+        xRequestId,
         dataId: paymentId,
         secret: tenant.mpWebhookSecret,
       })
@@ -56,6 +58,11 @@ export async function POST(
         console.warn(`[Webhook MP] Firma criptográfica inválida para tenant ${tenantSlug}`)
         return NextResponse.json({ error: 'Firma criptográfica inválida.' }, { status: 401 })
       }
+    } else if (process.env.NODE_ENV === 'production') {
+      return NextResponse.json(
+        { error: 'Webhook secret requerido en producción.' },
+        { status: 403 }
+      )
     }
 
     // 3. Consultar estado real del pago directo a la API de Mercado Pago
@@ -78,9 +85,9 @@ export async function POST(
       return NextResponse.json({ message: 'Pago sin external_reference (no pertenece a una orden).' }, { status: 200 })
     }
 
-    // 4. Procesamiento IDEMPOTENTE de la orden
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
+    // 4. Procesamiento IDEMPOTENTE de la orden aislando estrictamente por tenantId
+    const order = await prisma.order.findFirst({
+      where: { id: String(orderId), tenantId: tenant.id },
       include: { user: true },
     })
 

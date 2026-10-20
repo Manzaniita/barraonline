@@ -356,15 +356,38 @@ export async function getClubDashboardMetrics(tenantSlug: string): Promise<ClubN
 }
 
 /**
+ * Verifica que un producto exista y pertenezca a la tienda autorizada (prevención Cross-Tenant IDOR).
+ */
+export async function verifyProductBelongsToTenant(
+  productId: string,
+  tenantSlug?: string | null
+) {
+  const product = await prisma.product.findUnique({
+    where: { id: productId },
+    include: { tenant: { select: { slug: true } } },
+  })
+  if (!product) {
+    throw new Error('Producto no encontrado.')
+  }
+  if (tenantSlug && product.tenant.slug !== tenantSlug) {
+    throw new Error('Acceso denegado: el producto pertenece a otra tienda.')
+  }
+  return product
+}
+
+/**
  * Activa o pausa un trago en tiempo real.
  */
 export async function toggleProductStatus({
   productId,
   isActive,
+  tenantSlug,
 }: {
   productId: string
   isActive: boolean
+  tenantSlug?: string | null
 }) {
+  await verifyProductBelongsToTenant(productId, tenantSlug)
   return prisma.product.update({
     where: { id: productId },
     data: { isActive },
@@ -440,6 +463,7 @@ export async function createProduct({
  */
 export async function updateProductDetails({
   productId,
+  tenantSlug,
   name,
   category,
   description,
@@ -450,6 +474,7 @@ export async function updateProductDetails({
   isActive,
 }: {
   productId: string
+  tenantSlug?: string | null
   name?: string
   category?: string
   description?: string | null
@@ -459,6 +484,7 @@ export async function updateProductDetails({
   redeemDeadlineTime?: string | null
   isActive?: boolean
 }) {
+  await verifyProductBelongsToTenant(productId, tenantSlug)
   return prisma.product.update({
     where: { id: productId },
     data: {
@@ -479,7 +505,14 @@ export async function updateProductDetails({
 /**
  * Elimina un producto y limpia sus referencias en cascada transaccional.
  */
-export async function deleteProduct({ productId }: { productId: string }) {
+export async function deleteProduct({
+  productId,
+  tenantSlug,
+}: {
+  productId: string
+  tenantSlug?: string | null
+}) {
+  await verifyProductBelongsToTenant(productId, tenantSlug)
   return prisma.$transaction(async (tx) => {
     const orderItems = await tx.orderItem.findMany({
       where: { productId },
@@ -623,6 +656,12 @@ export async function recordBreakage({
   })
 }
 
+function sanitizeCsvCell(value: unknown): string {
+  const raw = String(value ?? '').replace(/\r?\n/g, ' ').trim()
+  const neutralized = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw
+  return `"${neutralized.replace(/"/g, '""')}"`
+}
+
 /**
  * Genera el reporte CSV del Cierre de Noche para exportación contable.
  */
@@ -633,25 +672,25 @@ export async function generateNightAuditCsv(tenantSlug: string): Promise<string>
   const now = new Date().toLocaleString('es-AR')
 
   let csv = `REPORTE DE CIERRE NOCTURNO - BARRA ONLINE\n`
-  csv += `Boliche: ${metrics.tenantName} (${metrics.tenantSlug})\n`
-  csv += `Fecha y Hora de Cierre: ${now}\n`
-  csv += `Total Recaudado: $${metrics.totalRevenue}\n`
-  csv += `Total Bebidas Vendidas: ${metrics.totalDrinksPurchased}\n`
-  csv += `Total Bebidas Despachadas en Barra: ${metrics.totalDrinksRedeemed}\n`
-  csv += `Saldo No Canjeado (Expirado 07:00 AM): ${metrics.totalDrinksPending}\n`
-  csv += `Tasa de Canje: ${metrics.redemptionRatePercentage}%\n`
-  csv += `Total Roturas/Mermas Registradas: ${metrics.breakageCount} unidades ($${metrics.breakageCost})\n\n`
+  csv += `Boliche: ${sanitizeCsvCell(`${metrics.tenantName} (${metrics.tenantSlug})`)}\n`
+  csv += `Fecha y Hora de Cierre: ${sanitizeCsvCell(now)}\n`
+  csv += `Total Recaudado: $${Number(metrics.totalRevenue)}\n`
+  csv += `Total Bebidas Vendidas: ${Number(metrics.totalDrinksPurchased)}\n`
+  csv += `Total Bebidas Despachadas en Barra: ${Number(metrics.totalDrinksRedeemed)}\n`
+  csv += `Saldo No Canjeado (Expirado 07:00 AM): ${Number(metrics.totalDrinksPending)}\n`
+  csv += `Tasa de Canje: ${Number(metrics.redemptionRatePercentage)}%\n`
+  csv += `Total Roturas/Mermas Registradas: ${Number(metrics.breakageCount)} unidades ($${Number(metrics.breakageCost)})\n\n`
 
   csv += `DETALLE POR PRODUCTO\n`
   csv += `Producto,Categoria,Precio,Estado,Vendidos,Despachados,Pendientes,Recaudacion\n`
   for (const p of metrics.products) {
-    csv += `"${p.name}","${p.category}",${p.price},${p.isActive ? 'ACTIVO' : 'PAUSADO'},${p.purchasedCount},${p.redeemedCount},${p.remainingCount},${p.revenue}\n`
+    csv += `${sanitizeCsvCell(p.name)},${sanitizeCsvCell(p.category)},${Number(p.price)},${p.isActive ? 'ACTIVO' : 'PAUSADO'},${Number(p.purchasedCount)},${Number(p.redeemedCount)},${Number(p.remainingCount)},${Number(p.revenue)}\n`
   }
 
   csv += `\nREGISTRO DE ROTURAS Y MERMAS\n`
   csv += `Fecha,Producto,Cantidad,Motivo,Notas,Costo Estimado\n`
   for (const b of metrics.breakages) {
-    csv += `"${b.createdAt}","${b.productName}",${b.quantity},"${b.reason}","${b.notes || ''}",${b.costEstimate || 0}\n`
+    csv += `${sanitizeCsvCell(b.createdAt)},${sanitizeCsvCell(b.productName)},${Number(b.quantity)},${sanitizeCsvCell(b.reason)},${sanitizeCsvCell(b.notes || '')},${Number(b.costEstimate || 0)}\n`
   }
 
   return csv

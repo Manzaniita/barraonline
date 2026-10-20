@@ -103,6 +103,15 @@ export default async function OrderPage({ params, searchParams }: OrderPageProps
   const isRejected = order.status === 'CANCELLED' || status === 'failure'
   const isPending = !isApproved && !isRejected
 
+  const serverQrToken = isApproved
+    ? generateOrderQrToken({
+        orderId: order.id,
+        tenantId: order.tenant.id,
+        userDni: order.user?.dni || undefined,
+        expiresAt: order.expiresAt.toISOString(),
+      }).token
+    : undefined
+
   return (
     <div className="min-h-screen bg-[#0a0a0c] text-white flex flex-col justify-between p-4 selection:bg-purple-500 selection:text-white">
       <div className="max-w-md mx-auto w-full pt-8 pb-16 flex flex-col items-center text-center">
@@ -171,6 +180,7 @@ export default async function OrderPage({ params, searchParams }: OrderPageProps
               orderId={orderId}
               tenantSlug={tenantSlug}
               nightclubName={order.tenant.name}
+              initialQrToken={serverQrToken}
             />
           </div>
         )}

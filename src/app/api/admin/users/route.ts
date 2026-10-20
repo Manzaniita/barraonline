@@ -70,6 +70,15 @@ export async function PATCH(req: NextRequest) {
     }
 
     const isSuper = auth.user.role === 'SUPER_ADMIN'
+    const targetUser = await getUserById(userId)
+
+    if (!targetUser) {
+      return NextResponse.json(
+        { success: false, error: 'Usuario no encontrado.' },
+        { status: 404 }
+      )
+    }
+
     if (!isSuper) {
       if (role === 'SUPER_ADMIN') {
         return NextResponse.json(
@@ -80,12 +89,20 @@ export async function PATCH(req: NextRequest) {
           { status: 403 }
         )
       }
-      const targetUser = await getUserById(userId)
-      if (targetUser?.role === 'SUPER_ADMIN') {
+      if (targetUser.role === 'SUPER_ADMIN') {
         return NextResponse.json(
           {
             success: false,
             error: 'No podés modificar los permisos de un SuperAdmin.',
+          },
+          { status: 403 }
+        )
+      }
+      if (!auth.user.tenantId || targetUser.tenantId !== auth.user.tenantId) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'No tenés permisos para modificar usuarios de otro local.',
           },
           { status: 403 }
         )
@@ -251,6 +268,15 @@ export async function PUT(req: NextRequest) {
           { status: 403 }
         )
       }
+      if (!auth.user.tenantId || targetUser.tenantId !== auth.user.tenantId) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'No tenés permisos para modificar usuarios de otro local.',
+          },
+          { status: 403 }
+        )
+      }
     }
 
     const updated = await updateUserFromAdmin({
@@ -313,14 +339,25 @@ export async function DELETE(req: NextRequest) {
       )
     }
 
-    if (!isSuper && targetUser.role === 'SUPER_ADMIN') {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'No tenés permisos para eliminar a un SuperAdmin.',
-        },
-        { status: 403 }
-      )
+    if (!isSuper) {
+      if (targetUser.role === 'SUPER_ADMIN') {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'No tenés permisos para eliminar a un SuperAdmin.',
+          },
+          { status: 403 }
+        )
+      }
+      if (!auth.user.tenantId || targetUser.tenantId !== auth.user.tenantId) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'No tenés permisos para eliminar usuarios de otro local.',
+          },
+          { status: 403 }
+        )
+      }
     }
 
     await deleteUserFromAdmin({

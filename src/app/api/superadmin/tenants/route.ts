@@ -89,9 +89,10 @@ export async function GET(req: NextRequest) {
         defaultExpirationHour: t.defaultExpirationHour || '07:00',
         mpSellerId: t.mpSellerId || '',
         mpPublicKey: t.mpPublicKey || '',
-        mpAccessTokenEnc: t.mpAccessTokenEnc || '',
-        mpWebhookSecret: t.mpWebhookSecret || '',
+        mpAccessTokenEnc: '',
+        mpWebhookSecret: '',
         hasMpConfigured: Boolean(t.mpAccessTokenEnc && t.mpAccessTokenEnc.trim() !== ''),
+        hasMpWebhookSecret: Boolean(t.mpWebhookSecret && t.mpWebhookSecret.trim() !== ''),
         feePercentage: Number(t.feePercentage),
         totalOrders: t._count.orders,
         totalProducts: t._count.products,
@@ -266,14 +267,16 @@ export async function POST(req: NextRequest) {
       },
     })
 
+    const { mpAccessTokenEnc: _enc, mpWebhookSecret: _sec, ...safeTenant } = tenant
+
     return NextResponse.json({
       success: true,
-      tenant,
+      tenant: safeTenant,
     })
   } catch (error: any) {
     console.error('Error creating tenant:', error)
     return NextResponse.json(
-      { success: false, error: error?.message || 'Error creando boliche' },
+      { success: false, error: 'Error creando boliche' },
       { status: 500 }
     )
   }
@@ -330,14 +333,16 @@ export async function PATCH(req: NextRequest) {
       },
     })
 
+    const { mpAccessTokenEnc: _enc, mpWebhookSecret: _sec, ...safeTenant } = updated
+
     return NextResponse.json({
       success: true,
-      tenant: updated,
+      tenant: safeTenant,
     })
   } catch (error: any) {
     console.error('Error updating tenant:', error)
     return NextResponse.json(
-      { success: false, error: error?.message || 'Error actualizando boliche' },
+      { success: false, error: 'Error actualizando boliche' },
       { status: 500 }
     )
   }
@@ -461,14 +466,16 @@ export async function PUT(req: NextRequest) {
       },
     })
 
+    const { mpAccessTokenEnc: _enc, mpWebhookSecret: _sec, ...safeTenant } = updated
+
     return NextResponse.json({
       success: true,
-      tenant: updated,
+      tenant: safeTenant,
     })
   } catch (error: any) {
     console.error('Error updating tenant in PUT:', error)
     return NextResponse.json(
-      { success: false, error: error?.message || 'Error actualizando boliche' },
+      { success: false, error: 'Error actualizando boliche' },
       { status: 500 }
     )
   }

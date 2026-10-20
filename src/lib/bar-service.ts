@@ -61,20 +61,9 @@ export async function verifyQrForBar({
     } catch {}
   }
 
-  // 1. Verificación criptográfica de la firma del QR
+  // 1. Verificación criptográfica estricta de la firma del QR (sin fallback a ID sin firma)
   const sigResult = verifyOrderQrToken(cleanToken)
-  let orderId = sigResult.valid && sigResult.payload ? sigResult.payload.orderId : null
-
-  // Fallback si vino con orderId directo
-  if (!orderId) {
-    try {
-      const maybeOrder = await prisma.order.findUnique({
-        where: { id: cleanToken },
-        select: { id: true },
-      })
-      if (maybeOrder) orderId = maybeOrder.id
-    } catch {}
-  }
+  const orderId = sigResult.valid && sigResult.payload ? sigResult.payload.orderId : null
 
   if (!orderId) {
     return {
@@ -245,19 +234,9 @@ export async function redeemOrderItems(
     } catch {}
   }
 
-  // 1. Verificación criptográfica obligatoria de la firma del QR
+  // 1. Verificación criptográfica obligatoria de la firma del QR (sin fallback a ID sin firma)
   const sigResult = verifyOrderQrToken(cleanToken)
-  let orderId = sigResult.valid && sigResult.payload ? sigResult.payload.orderId : null
-
-  if (!orderId) {
-    try {
-      const maybeOrder = await prisma.order.findUnique({
-        where: { id: cleanToken },
-        select: { id: true },
-      })
-      if (maybeOrder) orderId = maybeOrder.id
-    } catch {}
-  }
+  const orderId = sigResult.valid && sigResult.payload ? sigResult.payload.orderId : null
 
   if (!orderId) {
     return {
@@ -407,9 +386,13 @@ export async function redeemOrderItems(
 export async function rollbackRecentRedemption({
   redemptionLogIds,
   bartenderUserId,
+  tenantId,
+  isSuperAdmin = false,
 }: {
   redemptionLogIds: string[]
   bartenderUserId?: string
+  tenantId?: string | null
+  isSuperAdmin?: boolean
 }): Promise<{ success: boolean; error?: string }> {
   if (!redemptionLogIds || redemptionLogIds.length === 0) {
     return { success: false, error: 'No se indicaron entregas para revertir.' }
@@ -421,6 +404,9 @@ export async function rollbackRecentRedemption({
         where: {
           id: { in: redemptionLogIds },
           isReverted: false,
+          ...(isSuperAdmin || tenantId === undefined
+            ? {}
+            : { order: { tenantId: tenantId || '__invalid_tenant__' } }),
         },
       })
 

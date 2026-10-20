@@ -79,15 +79,21 @@ export async function PUT(req: NextRequest) {
       themeConfig,
     })
 
+    const { mpAccessTokenEnc: _enc, mpWebhookSecret: _sec, ...safeTenant } = updated
+
     return NextResponse.json({
       success: true,
-      tenant: updated,
+      tenant: {
+        ...safeTenant,
+        hasMpAccessToken: Boolean(updated.mpAccessTokenEnc),
+        hasMpWebhookSecret: Boolean(updated.mpWebhookSecret),
+      },
       message: 'Configuración de la tienda actualizada correctamente.',
     })
   } catch (error: any) {
     console.error('[PUT /api/admin/settings] Error:', error)
     return NextResponse.json(
-      { success: false, error: error?.message || 'Error al guardar la configuración.' },
+      { success: false, error: 'Error al guardar la configuración.' },
       { status: 500 }
     )
   }

@@ -1,35 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { redeemOrderItems } from '@/lib/bar-service'
 import { STAFF_ROLES, requireApiRole } from '@/lib/session'
-import { prisma } from '@/lib/prisma'
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { qrToken, tenantSlug, deliveries, itemsToRedeem, bartenderId } = body
+    const { qrToken, tenantSlug, deliveries, itemsToRedeem } = body
     const rawDeliveries = itemsToRedeem || deliveries
 
-    let effectiveBartenderId: string | undefined = undefined
+    const effectiveSlug =
+      typeof tenantSlug === 'string' && tenantSlug.trim() ? tenantSlug.trim() : 'demo-club'
 
-    const auth = await requireApiRole(req, STAFF_ROLES, tenantSlug || 'demo-club')
-    if (!auth.error && auth.user) {
-      effectiveBartenderId = auth.user.id
-    } else if (bartenderId) {
-      // Si se envía bartenderId explícito (pruebas de estrés / script de QA)
-      const bartenderUser = await prisma.user.findFirst({
-        where: { id: bartenderId },
-      })
-      if (bartenderUser) {
-        effectiveBartenderId = bartenderUser.id
-      } else {
-        const anyBartender = await prisma.user.findFirst({
-          where: { role: 'BARTENDER' },
-        })
-        effectiveBartenderId = anyBartender?.id || bartenderId
-      }
-    } else {
-      return auth.error
-    }
+    const auth = await requireApiRole(req, STAFF_ROLES, effectiveSlug)
+    if (auth.error) return auth.error
 
     if (!qrToken || typeof qrToken !== 'string') {
       return NextResponse.json(
@@ -38,17 +21,17 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    if (!rawDeliveries || !Array.isArray(rawDeliveries) || rawDeliveries.length === 0) {
+    if (!rawDeliveries || !Array.isArray(rawDeliveries) || rawDeliveries.length === 0 || rawDeliveries.length > 50) {
       return NextResponse.json(
-        { error: 'Debe seleccionar al menos una bebida para entregar.' },
+        { error: 'Debe seleccionar al menos una bebida válida para entregar.' },
         { status: 400 }
       )
     }
 
     const result = await redeemOrderItems({
       qrToken,
-      tenantSlug: tenantSlug || 'demo-club',
-      bartenderUserId: effectiveBartenderId,
+      tenantSlug: effectiveSlug,
+      bartenderUserId: auth.user.id,
       deliveries: rawDeliveries,
     })
 

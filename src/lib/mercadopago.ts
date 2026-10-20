@@ -74,19 +74,18 @@ export function calculatePromoDeadline(deadlineTime: string): Date {
  */
 export function verifyMercadoPagoWebhookSignature({
   xSignature,
+  xRequestId,
   dataId,
   secret,
 }: {
   xSignature: string | null
+  xRequestId?: string | null
   dataId: string
   secret?: string | null
 }): boolean {
-  if (!secret) {
-    // Si el boliche aún no cargó su webhook secret, permitimos continuar
-    return true
+  if (!secret || !xSignature) {
+    return false
   }
-
-  if (!xSignature) return false
 
   try {
     const parts = xSignature.split(',')
@@ -95,20 +94,37 @@ export function verifyMercadoPagoWebhookSignature({
 
     for (const part of parts) {
       const [key, val] = part.split('=')
-      if (key.trim() === 'ts') ts = val.trim()
-      if (key.trim() === 'v1') v1 = val.trim()
+      if (key && val) {
+        if (key.trim() === 'ts') ts = val.trim()
+        if (key.trim() === 'v1') v1 = val.trim()
+      }
     }
 
-    if (!ts || !v1) return false
+    if (!ts || !v1 || !/^\d+$/.test(ts) || !/^[0-9a-f]{64}$/i.test(v1)) {
+      return false
+    }
+
+    // Protección Anti-Replay: ventana máxima de 5 minutos
+    const timestampMs = Number(ts) > 1e12 ? Number(ts) : Number(ts) * 1000
+    if (Math.abs(Date.now() - timestampMs) > 5 * 60 * 1000) {
+      return false
+    }
 
     // Manifest que firma Mercado Pago
-    const manifest = `id:${dataId};request-id:;ts:${ts};`
+    const manifest = `id:${dataId};request-id:${xRequestId || ''};ts:${ts};`
     const expectedSignature = crypto
       .createHmac('sha256', secret)
       .update(manifest)
       .digest('hex')
 
-    return expectedSignature === v1
+    const expectedBuf = Buffer.from(expectedSignature, 'hex')
+    const providedBuf = Buffer.from(v1, 'hex')
+
+    if (expectedBuf.length !== providedBuf.length) {
+      return false
+    }
+
+    return crypto.timingSafeEqual(expectedBuf, providedBuf)
   } catch {
     return false
   }

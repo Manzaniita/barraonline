@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
 
     const { redemptionLogIds } = await req.json()
 
-    if (!redemptionLogIds || !Array.isArray(redemptionLogIds) || redemptionLogIds.length === 0) {
+    if (!redemptionLogIds || !Array.isArray(redemptionLogIds) || redemptionLogIds.length === 0 || redemptionLogIds.length > 50) {
       return NextResponse.json(
         { error: 'IDs de entregas requeridos para revertir.' },
         { status: 400 }
@@ -19,6 +19,8 @@ export async function POST(req: NextRequest) {
     const result = await rollbackRecentRedemption({
       redemptionLogIds,
       bartenderUserId: auth.user.id,
+      tenantId: auth.user.tenantId,
+      isSuperAdmin: auth.user.role === 'SUPER_ADMIN',
     })
 
     if (!result.success) {

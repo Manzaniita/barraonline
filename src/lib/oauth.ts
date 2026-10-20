@@ -1,5 +1,6 @@
 import crypto from 'crypto'
 import { NextRequest } from 'next/server'
+import { env } from '@/config/env'
 
 /**
  * "Iniciar sesión con Google" REAL (OAuth 2.0 / OpenID Connect).
@@ -44,28 +45,36 @@ export function isProviderConfigured(provider: OAuthProvider): boolean {
 }
 
 export function getAppOrigin(req: NextRequest): string {
-  const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || req.nextUrl.host
-  // Si la petición viene de localhost / red local de pruebas, priorizar el host local
-  if (host && (host.includes('localhost') || host.includes('127.0.0.1'))) {
-    const proto = req.headers.get('x-forwarded-proto') || req.nextUrl.protocol.replace(':', '')
-    return `${proto}://${host}`
+  const url = new URL(req.url)
+  if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
+    return `${url.protocol}//${url.host}`
   }
   const fromEnv = process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/+$/, '')
   if (fromEnv) return fromEnv
-  const proto = req.headers.get('x-forwarded-proto') || req.nextUrl.protocol.replace(':', '')
-  return `${proto}://${host}`
+  return `${url.protocol}//${url.host}`
 }
 
 export function getRedirectUri(req: NextRequest, provider: OAuthProvider): string {
   return `${getAppOrigin(req)}/api/auth/oauth/${provider}/callback`
 }
 
-/** Solo rutas internas relativas: evita open-redirects. */
+/** Solo rutas internas relativas seguras: bloquea open-redirects y caracteres de inyección HTML/JS. */
 export function sanitizeReturnTo(value: string | null | undefined, fallback = '/'): string {
   if (!value) return fallback
-  if (!value.startsWith('/') || value.startsWith('//') || value.startsWith('/\\')) return fallback
-  if (value.startsWith('/api/')) return fallback
-  return value
+  const trimmed = value.trim()
+  if (!trimmed.startsWith('/') || trimmed.startsWith('//') || trimmed.startsWith('/\\')) return fallback
+  if (trimmed.startsWith('/api/')) return fallback
+  if (!/^\/[a-zA-Z0-9/_?=&%-]*$/.test(trimmed)) return fallback
+  return trimmed
+}
+
+export function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
 }
 
 export function randomToken(bytes = 24): string {
@@ -159,15 +168,27 @@ export async function exchangeCodeForIdentity(
 }
 
 export function encodeState(payload: OAuthStatePayload): string {
-  return Buffer.from(JSON.stringify(payload)).toString('base64url')
+  const data = Buffer.from(JSON.stringify(payload)).toString('base64url')
+  const sig = crypto.createHmac('sha256', env.AUTH_SECRET).update(data).digest('base64url')
+  return `${data}.${sig}`
 }
 
 export function decodeState(raw: string | undefined | null): OAuthStatePayload | null {
   if (!raw) return null
   try {
-    const p = JSON.parse(Buffer.from(raw, 'base64url').toString('utf-8'))
+    const [data, sig] = raw.split('.')
+    if (!data || !sig) return null
+    const expectedSig = crypto.createHmac('sha256', env.AUTH_SECRET).update(data).digest('base64url')
+    const a = Buffer.from(sig)
+    const b = Buffer.from(expectedSig)
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null
+
+    const p = JSON.parse(Buffer.from(data, 'base64url').toString('utf-8'))
     if (!p?.state || !p?.nonce || !isOAuthProvider(p.provider)) return null
-    return p
+    return {
+      ...p,
+      returnTo: sanitizeReturnTo(p.returnTo),
+    }
   } catch {
     return null
   }

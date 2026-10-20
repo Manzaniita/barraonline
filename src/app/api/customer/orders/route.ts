@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 1. Obtener usuario autenticado si existe sesión
+    // 1. Obtener usuario autenticado si existe sesión firmada
     let sessionUserId: string | null = null
     const sessionCookie = req.cookies.get('bo_session')?.value
     if (sessionCookie) {
@@ -37,13 +37,14 @@ export async function POST(req: NextRequest) {
       if (auth?.id) sessionUserId = auth.id
     }
 
-    const cleanDni = userDni ? String(userDni).replace(/\D/g, '') : null
-
-    // 2. Construir condiciones de búsqueda
+    // 2. Construir condiciones de búsqueda seguras (prohibida la enumeración por DNI sin sesión)
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
     const orConditions: any[] = []
 
     if (Array.isArray(orderIds) && orderIds.length > 0) {
-      const validIds = orderIds.filter((id) => typeof id === 'string' && id.trim().length > 0)
+      const validIds = orderIds
+        .filter((id): id is string => typeof id === 'string' && UUID_REGEX.test(id.trim()))
+        .slice(0, 25)
       if (validIds.length > 0) {
         orConditions.push({ id: { in: validIds } })
       }
@@ -51,10 +52,6 @@ export async function POST(req: NextRequest) {
 
     if (sessionUserId) {
       orConditions.push({ userId: sessionUserId })
-    }
-
-    if (cleanDni && cleanDni.length >= 7) {
-      orConditions.push({ user: { dni: cleanDni } })
     }
 
     // Si no hay condiciones válidas, retornar arrays vacíos
@@ -218,7 +215,7 @@ export async function POST(req: NextRequest) {
   } catch (error: any) {
     console.error('[POST /api/customer/orders] Error:', error)
     return NextResponse.json(
-      { success: false, error: error?.message || 'Error al consultar órdenes.' },
+      { success: false, error: 'Error al consultar órdenes.' },
       { status: 500 }
     )
   }

@@ -4,12 +4,10 @@ import { ADMIN_ROLES, requireApiRole } from '@/lib/session'
 
 export async function POST(req: NextRequest) {
   try {
-    const auth = await requireApiRole(req, ADMIN_ROLES)
-    if (auth.error) return auth.error
-
     const body = await req.json()
     const {
       productId,
+      tenantSlug,
       isActive,
       name,
       category,
@@ -20,6 +18,9 @@ export async function POST(req: NextRequest) {
       redeemDeadlineTime,
     } = body
 
+    const auth = await requireApiRole(req, ADMIN_ROLES, tenantSlug)
+    if (auth.error) return auth.error
+
     if (!productId) {
       return NextResponse.json(
         { success: false, error: 'productId es requerido' },
@@ -27,12 +28,18 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    const effectiveSlug = auth.user.role === 'SUPER_ADMIN' ? tenantSlug : auth.user.tenantSlug
+    if (auth.user.role !== 'SUPER_ADMIN' && !effectiveSlug) {
+      return NextResponse.json({ success: false, error: 'Acceso denegado.' }, { status: 403 })
+    }
+
     let updatedProduct
     if (typeof isActive === 'boolean' && name === undefined && price === undefined && stockAvailable === undefined) {
-      updatedProduct = await toggleProductStatus({ productId, isActive })
+      updatedProduct = await toggleProductStatus({ productId, isActive, tenantSlug: effectiveSlug })
     } else {
       updatedProduct = await updateProductDetails({
         productId,
+        tenantSlug: effectiveSlug,
         name,
         category,
         description,
@@ -51,7 +58,7 @@ export async function POST(req: NextRequest) {
   } catch (error: any) {
     console.error('Error updating product:', error)
     return NextResponse.json(
-      { success: false, error: error?.message || 'Error actualizando producto' },
+      { success: false, error: 'Error actualizando producto' },
       { status: 500 }
     )
   }

@@ -158,8 +158,8 @@ export async function registerAccount({
     throw new Error('Debés ingresar un correo electrónico, teléfono o DNI.')
   }
 
-  if (password.length < 4) {
-    throw new Error('La contraseña debe tener al menos 4 caracteres.')
+  if (!password || password.trim().length < 8 || password.length > 128) {
+    throw new Error('La contraseña debe tener al menos 8 caracteres.')
   }
 
   let tenantId: string | null = null
@@ -432,8 +432,8 @@ export async function updateMyAccount({
 
   // Cambio o creación de contraseña
   if (newPassword && newPassword.trim().length > 0) {
-    if (newPassword.length < 4) {
-      throw new Error('La nueva contraseña debe tener al menos 4 caracteres.')
+    if (newPassword.trim().length < 8 || newPassword.length > 128) {
+      throw new Error('La nueva contraseña debe tener al menos 8 caracteres.')
     }
     if (user.passwordHash) {
       if (!currentPassword || !verifyPassword(currentPassword, user.passwordHash)) {
@@ -481,14 +481,8 @@ export async function listUsersForAdmin({
 
   if (scopeToTenant) {
     if (!tenantSlug) return []
-    const exactMatch: any[] = []
-    if (q.includes('@')) exactMatch.push({ email: q.toLowerCase() })
-    const digits = q.replace(/\D/g, '')
-    if (digits.length >= 7) exactMatch.push({ dni: digits })
-    conditions.push({
-      OR: [{ tenant: { slug: tenantSlug } }, ...exactMatch],
-    })
-    // Un admin de boliche nunca ve a los superadmins
+    conditions.push({ tenant: { slug: tenantSlug } })
+    // Un admin de boliche nunca ve a los superadmins ni usuarios fuera de su tenant
     conditions.push({ role: { not: 'SUPER_ADMIN' } })
   } else if (tenantSlug) {
     conditions.push({
@@ -556,8 +550,8 @@ export async function createUserFromAdmin({
     throw new Error('Debés ingresar al menos un correo electrónico, teléfono o DNI.')
   }
 
-  if (!password || password.trim().length < 4) {
-    throw new Error('La contraseña debe tener al menos 4 caracteres.')
+  if (!password || password.trim().length < 8 || password.length > 128) {
+    throw new Error('La contraseña debe tener al menos 8 caracteres.')
   }
 
   let resolvedTenantId: string | null = tenantId !== undefined ? tenantId : null
@@ -712,8 +706,8 @@ export async function updateUserFromAdmin({
   }
 
   if (newPassword && newPassword.trim().length > 0) {
-    if (newPassword.length < 4) {
-      throw new Error('La contraseña debe tener al menos 4 caracteres.')
+    if (newPassword.trim().length < 8 || newPassword.length > 128) {
+      throw new Error('La contraseña debe tener al menos 8 caracteres.')
     }
     updateData.passwordHash = hashPassword(newPassword.trim())
   }

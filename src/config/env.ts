@@ -1,4 +1,5 @@
 // src/config/env.ts
+import crypto from 'crypto'
 
 export interface AppEnvironment {
   NODE_ENV: 'development' | 'production' | 'test'
@@ -10,35 +11,45 @@ export interface AppEnvironment {
   ALLOW_OAUTH_SIMULATION: boolean
 }
 
-function getRequiredEnv(key: string): string {
-  const value = process.env[key]
-  if (!value) {
-    // Si estamos en fase de compilación / build estático de Next.js en CI o Vercel
-    if (
-      process.env.npm_lifecycle_event === 'build' ||
-      process.env.NEXT_PHASE === 'phase-production-build' ||
-      process.env.NEXT_PHASE === 'phase-export'
-    ) {
-      return `build-time-placeholder-${key.toLowerCase()}`
+const EPHEMERAL_DEV_SECRETS = new Map<string, string>()
+
+function getRequiredEnv(key: string, minLength = 16): string {
+  const value = process.env[key]?.trim()
+  const isBuildPhase =
+    process.env.npm_lifecycle_event === 'build' ||
+    process.env.NEXT_PHASE === 'phase-production-build' ||
+    process.env.NEXT_PHASE === 'phase-export'
+
+  if (!value || value.length < minLength) {
+    if (isBuildPhase) {
+      return crypto.randomBytes(32).toString('hex')
     }
     if (process.env.NODE_ENV === 'production') {
-      throw new Error(`[CRITICAL CONFIG ERROR] Variable de entorno requerida ausente: "${key}"`)
+      throw new Error(`[CRITICAL CONFIG ERROR] Variable de entorno requerida ausente o insegura: "${key}"`)
     }
-    return `dev-local-${key.toLowerCase()}`
+    if (!EPHEMERAL_DEV_SECRETS.has(key)) {
+      EPHEMERAL_DEV_SECRETS.set(key, crypto.randomBytes(32).toString('hex'))
+    }
+    return EPHEMERAL_DEV_SECRETS.get(key)!
   }
   return value
 }
 
+const qrSecret = getRequiredEnv('QR_SIGNING_SECRET', 32)
+const authSecret = getRequiredEnv('AUTH_SECRET', 32)
+
+if (process.env.NODE_ENV === 'production' && qrSecret === authSecret) {
+  throw new Error(
+    '[CRITICAL CONFIG ERROR] QR_SIGNING_SECRET y AUTH_SECRET deben ser claves criptográficas distintas.'
+  )
+}
+
 export const env: AppEnvironment = {
   NODE_ENV: (process.env.NODE_ENV as AppEnvironment['NODE_ENV']) || 'development',
-  APP_URL: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
-  DATABASE_URL: getRequiredEnv('DATABASE_URL'),
-  QR_SIGNING_SECRET: getRequiredEnv('QR_SIGNING_SECRET'),
-  AUTH_SECRET:
-    process.env.AUTH_SECRET ||
-    process.env.NEXTAUTH_SECRET ||
-    process.env.QR_SIGNING_SECRET ||
-    getRequiredEnv('AUTH_SECRET'),
+  APP_URL: (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').trim().replace(/\/+$/, ''),
+  DATABASE_URL: getRequiredEnv('DATABASE_URL', 10),
+  QR_SIGNING_SECRET: qrSecret,
+  AUTH_SECRET: authSecret,
   ALLOW_PAYMENT_SIMULATION:
     process.env.ALLOW_PAYMENT_SIMULATION === 'true' && process.env.NODE_ENV !== 'production',
   ALLOW_OAUTH_SIMULATION:

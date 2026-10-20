@@ -26,6 +26,7 @@ interface TicketQRCardProps {
   tenantSlug: string
   nightclubName: string
   demo?: boolean
+  initialQrToken?: string
 }
 
 export function TicketQRCard({
@@ -33,6 +34,7 @@ export function TicketQRCard({
   tenantSlug,
   nightclubName,
   demo = false,
+  initialQrToken,
 }: TicketQRCardProps) {
   const [ticketData, setTicketData] = useState<TicketData | null>(null)
   const [ticketImageUrl, setTicketImageUrl] = useState<string | null>(null)
@@ -51,8 +53,12 @@ export function TicketQRCard({
         const customer = getSavedCustomerProfile()
 
         // Obtener la orden real y su token criptográfico firmado desde el endpoint seguro
-        const fetchUrl = `/api/customer/orders/${orderId}${demo ? '?demo=true' : ''}`
-        const response = await fetch(fetchUrl)
+        const queryParams = new URLSearchParams()
+        if (demo) queryParams.set('demo', 'true')
+        if (initialQrToken) queryParams.set('token', initialQrToken)
+        const qs = queryParams.toString()
+        const fetchUrl = `/api/customer/orders/${orderId}${qs ? `?${qs}` : ''}`
+        const response = await fetch(fetchUrl, { credentials: 'same-origin' })
         if (!response.ok) {
           setOrderError('La orden no existe o fue eliminada de la base de datos.')
           setIsGenerating(false)

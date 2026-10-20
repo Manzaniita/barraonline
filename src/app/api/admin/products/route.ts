@@ -171,8 +171,14 @@ export async function PUT(req: NextRequest) {
       )
     }
 
+    const effectiveSlug = auth.user.role === 'SUPER_ADMIN' ? tenantSlug : auth.user.tenantSlug
+    if (auth.user.role !== 'SUPER_ADMIN' && !effectiveSlug) {
+      return NextResponse.json({ success: false, error: 'Acceso denegado.' }, { status: 403 })
+    }
+
     const updated = await updateProductDetails({
       productId,
+      tenantSlug: effectiveSlug,
       name,
       category,
       description,
@@ -226,7 +232,12 @@ export async function DELETE(req: NextRequest) {
       )
     }
 
-    await deleteProduct({ productId })
+    const effectiveSlug = auth.user.role === 'SUPER_ADMIN' ? tenantSlug : auth.user.tenantSlug
+    if (auth.user.role !== 'SUPER_ADMIN' && !effectiveSlug) {
+      return NextResponse.json({ success: false, error: 'Acceso denegado.' }, { status: 403 })
+    }
+
+    await deleteProduct({ productId, tenantSlug: effectiveSlug })
 
     return NextResponse.json({
       success: true,

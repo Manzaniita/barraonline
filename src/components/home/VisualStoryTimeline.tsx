@@ -508,19 +508,12 @@ export function VisualStoryTimeline({ primaryClub, onFocusSearch }: VisualStoryT
                     >
                       Siguiente etapa (0{activeStage + 2}) →
                     </button>
-                  ) : primaryClub ? (
-                    <Link
-                      href={`/${primaryClub.slug}`}
-                      className="font-mono-tech text-xs font-bold text-[#D4FF00] hover:underline"
-                    >
-                      Abrir carta de {primaryClub.displayName} →
-                    </Link>
                   ) : (
                     <a
                       href="#demo-interactiva"
                       className="font-mono-tech text-xs font-bold text-[#D4FF00] hover:underline"
                     >
-                      Probar simulador interactivo ↓
+                      Probar en el simulador interactivo ↑
                     </a>
                   )}
                 </div>

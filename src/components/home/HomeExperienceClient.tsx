@@ -271,11 +271,11 @@ export function HomeExperienceClient({
             <a href="#buscador-boliches" className="hover:text-[#D4FF00] transition-colors">
               Boliches adheridos
             </a>
-            <a href="#como-funciona" className="hover:text-[#D4FF00] transition-colors">
-              Cómo se pide
-            </a>
             <a href="#demo-interactiva" className="hover:text-[#D4FF00] transition-colors">
-              Probar la carta
+              Probar demo
+            </a>
+            <a href="#como-funciona" className="hover:text-[#D4FF00] transition-colors">
+              Cómo funciona
             </a>
             <a href="#beneficios-noche" className="hover:text-[#D4FF00] transition-colors">
               En la barra
@@ -288,7 +288,7 @@ export function HomeExperienceClient({
             <button
               type="button"
               onClick={focusClubFinder}
-              className="hidden sm:inline-flex items-center gap-2.5 px-3.5 py-2 rounded-xl bg-[#131210] hover:bg-[#1B1917] border border-[#F6F3EC]/12 text-xs text-[#B6AFA3] hover:text-[#F6F3EC] transition-all cursor-pointer"
+              className="hidden sm:inline-flex items-center gap-2.5 px-3.5 py-2 rounded-xl bg-[#131210] hover:bg-[#1B1917] border border-[#F6F3EC]/12 text-xs text-[#B6AFA3] hover:text-[#F6F3EC] transition-all cursor-pointer fable-interactive"
               aria-label="Buscar boliche"
             >
               <Search className="w-3.5 h-3.5 text-[#D4FF00]" />
@@ -298,23 +298,11 @@ export function HomeExperienceClient({
               </kbd>
             </button>
 
-            {/* Acceso directo a Mis QRs si hay un local activo */}
-            {primaryClub && (
-              <Link
-                href={`/${primaryClub.slug}/mis-tragos`}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#131210] hover:bg-[#1B1917] border border-[#F6F3EC]/12 text-xs font-semibold text-[#F6F3EC] transition-colors"
-                title="Ver mis códigos QR"
-              >
-                <QrCode className="w-3.5 h-3.5 text-[#D4FF00]" />
-                <span className="hidden sm:inline">Mis QRs</span>
-              </Link>
-            )}
-
             {/* Acceso a Mi Cuenta (Modal rápido o página /mi-cuenta) */}
             <button
               type="button"
               onClick={() => setIsAuthModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#131210] hover:bg-[#1B1917] border border-[#F6F3EC]/12 text-xs font-semibold text-[#F6F3EC] transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#131210] hover:bg-[#1B1917] border border-[#F6F3EC]/12 text-xs font-semibold text-[#F6F3EC] transition-colors cursor-pointer fable-interactive"
             >
               {customer ? (
                 <>
@@ -331,25 +319,14 @@ export function HomeExperienceClient({
               )}
             </button>
 
-            {/* CTA Primario: Ir a la Carta o Buscar Boliche */}
-            {primaryClub ? (
-              <Link
-                href={`/${primaryClub.slug}`}
-                className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#D4FF00] hover:bg-[#e1ff33] text-[#050506] font-extrabold text-xs transition-all active:scale-95"
-              >
-                <span>Pedir ahora</span>
-                <ArrowUpRight className="w-3.5 h-3.5" />
-              </Link>
-            ) : (
-              <button
-                type="button"
-                onClick={focusClubFinder}
-                className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#D4FF00] hover:bg-[#e1ff33] text-[#050506] font-extrabold text-xs transition-all active:scale-95 cursor-pointer"
-              >
-                <span>Buscar boliche</span>
-                <Search className="w-3.5 h-3.5" />
-              </button>
-            )}
+            {/* CTA Primario de la Plataforma: Probar la Demo interactiva */}
+            <a
+              href="#demo-interactiva"
+              className="fable-interactive inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#D4FF00] hover:bg-[#e1ff33] text-[#050506] font-display-syne font-extrabold text-xs transition-all shadow-[0_4px_16px_-4px_rgba(212,255,0,0.3)] active:scale-95"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-[#050506]" />
+              <span>Probar demo</span>
+            </a>
           </div>
         </div>
       </header>
@@ -432,24 +409,34 @@ export function HomeExperienceClient({
                       )}
                     </div>
 
-                    {primaryClub && !query ? (
-                      <Link
-                        href={`/${primaryClub.slug}`}
-                        className="min-h-[48px] px-5 py-3 rounded-xl bg-[#D4FF00] hover:bg-[#e2ff38] text-[#050506] font-display-syne font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shrink-0 transition-all active:scale-[0.99]"
-                      >
-                        <span>Entrar a {primaryClub.displayName}</span>
-                        <ArrowUpRight className="w-4 h-4" />
-                      </Link>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={focusClubFinder}
-                        className="min-h-[48px] px-5 py-3 rounded-xl bg-[#D4FF00] hover:bg-[#e2ff38] text-[#050506] font-display-syne font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shrink-0 transition-all active:scale-[0.99] cursor-pointer"
-                      >
-                        <span>Ver resultados ({filteredClubs.length})</span>
-                        <ArrowRight className="w-4 h-4" />
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={focusClubFinder}
+                      className="fable-interactive min-h-[48px] px-5 py-3 rounded-xl bg-[#D4FF00] hover:bg-[#e2ff38] text-[#050506] font-display-syne font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shrink-0 transition-all active:scale-[0.98] cursor-pointer shadow-[0_4px_16px_rgba(212,255,0,0.3)]"
+                    >
+                      <span>{query ? `Ver resultados (${filteredClubs.length})` : 'Buscar boliche'}</span>
+                      <Search className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {/* Acciones principales de la plataforma (Software Presentation) */}
+                  <div className="flex flex-wrap items-center gap-3 pt-1">
+                    <a
+                      href="#demo-interactiva"
+                      className="fable-interactive min-h-[48px] px-6 py-3 rounded-xl bg-[#D4FF00] hover:bg-[#e2ff38] text-[#050506] font-display-syne font-extrabold text-xs sm:text-sm inline-flex items-center justify-center gap-2 transition-all active:scale-95 shadow-[0_8px_24px_-4px_rgba(212,255,0,0.3)]"
+                    >
+                      <Sparkles className="w-4 h-4 text-[#050506]" />
+                      <span>Probar Demo interactiva</span>
+                    </a>
+
+                    <button
+                      type="button"
+                      onClick={focusClubFinder}
+                      className="fable-interactive min-h-[48px] px-5 py-3 rounded-xl bg-[#141311] hover:bg-[#1B1917] border border-[#F6F3EC]/15 hover:border-[#D4FF00]/40 text-[#F6F3EC] font-display-syne font-bold text-xs sm:text-sm inline-flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
+                    >
+                      <Search className="w-4 h-4 text-[#D4FF00]" />
+                      <span>Explorar boliches adheridos ({clubs.length})</span>
+                    </button>
                   </div>
 
                   {/* Resultados rápidos al escribir en el Hero o Chips de Boliches Activos */}
@@ -467,8 +454,8 @@ export function HomeExperienceClient({
                               href={`/${c.slug}`}
                               className={`p-2.5 rounded-xl flex items-center justify-between gap-3 transition-colors ${
                                 idx === highlightedIndex
-                                  ? 'bg-[#1F1D1A] border border-[#D4FF00]/50'
-                                  : 'bg-[#0C0B0A] hover:bg-[#191715] border border-[#F6F3EC]/8'
+                                    ? 'bg-[#1F1D1A] border border-[#D4FF00]/50'
+                                    : 'bg-[#0C0B0A] hover:bg-[#191715] border border-[#F6F3EC]/8'
                               }`}
                             >
                               <div className="flex items-center gap-2.5 min-w-0">
@@ -501,27 +488,24 @@ export function HomeExperienceClient({
                     </div>
                   ) : (
                     clubs.length > 0 && (
-                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <div className="flex flex-wrap items-center gap-2 text-xs pt-1">
                         <span className="font-mono-tech text-[11px] text-[#706B62] uppercase tracking-wider">
-                          Abiertos hoy:
+                          Boliches disponibles hoy:
                         </span>
                         {clubs.slice(0, 4).map((c) => (
-                          <Link
+                          <a
                             key={c.id}
-                            href={`/${c.slug}`}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#131210] hover:bg-[#1C1A17] border border-[#F6F3EC]/12 hover:border-[#D4FF00]/50 text-[#F6F3EC] font-medium transition-colors"
+                            href="#buscador-boliches"
+                            onClick={() => {
+                              setQuery(c.displayName)
+                              focusClubFinder()
+                            }}
+                            className="fable-interactive inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#131210] hover:bg-[#1C1A17] border border-[#F6F3EC]/12 hover:border-[#D4FF00]/40 text-[#F6F3EC] font-medium transition-colors"
                           >
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
                             <span>{c.displayName}</span>
-                            <ArrowUpRight className="w-3 h-3 text-[#D4FF00]" />
-                          </Link>
+                          </a>
                         ))}
-                        <a
-                          href="#demo-interactiva"
-                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-transparent hover:bg-[#F6F3EC]/5 text-[#B6AFA3] hover:text-[#D4FF00] font-mono-tech text-[11px] transition-colors"
-                        >
-                          <span>Probar carta interactiva ↓</span>
-                        </a>
                       </div>
                     )
                   )}
@@ -829,67 +813,75 @@ export function HomeExperienceClient({
                 </div>
               </div>
             ) : (
-              /* Presentación Editorial de Locales (Funciona tanto para 1 único local como para múltiples) */
+              /* Presentación de Locales Ordenada, Equilibrada y con Animaciones Claude / Fable */
               <div className="space-y-6">
                 <div
                   className={
                     filteredClubs.length === 1
-                      ? 'grid grid-cols-1 gap-6'
-                      : 'grid grid-cols-1 lg:grid-cols-12 gap-6'
+                      ? 'max-w-md mx-auto grid grid-cols-1 gap-6'
+                      : filteredClubs.length === 2
+                      ? 'max-w-3xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6'
+                      : 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6'
                   }
                 >
-                  {filteredClubs.map((club, index) => {
-                    const isHighlighted = index === highlightedIndex
-                    const isFeaturedLarge = filteredClubs.length === 1 || index === 0
-
+                  {filteredClubs.map((club) => {
                     return (
                       <article
                         key={club.id}
-                        onMouseEnter={() => setHighlightedIndex(index)}
-                        className={`group relative rounded-3xl overflow-hidden transition-all duration-300 border flex flex-col justify-between ${
-                          filteredClubs.length === 1
-                            ? 'bg-[#141311]'
-                            : isFeaturedLarge
-                            ? 'lg:col-span-7 bg-[#141311]'
-                            : 'lg:col-span-5 bg-[#12110F]'
-                        } ${
-                          isHighlighted
-                            ? 'border-[#D4FF00]/60 shadow-[0_24px_60px_-15px_rgba(0,0,0,0.9)]'
-                            : 'border-[#F6F3EC]/12 hover:border-[#F6F3EC]/30'
-                        }`}
+                        className="fable-card group relative rounded-3xl overflow-hidden bg-[#121110] border border-[#F6F3EC]/12 hover:border-[#D4FF00]/45 flex flex-col justify-between h-full shadow-[0_16px_36px_-10px_rgba(0,0,0,0.85)]"
                       >
-                        {/* Cabecera Visual / Identidad Propia del Establecimiento */}
-                        <div className="relative p-6 sm:p-8 border-b border-[#F6F3EC]/10 overflow-hidden">
-                          {/* Si el local tiene bannerUrl configurado, lo muestra con tratamiento nocturno; si no, crea una atmósfera lumínica con el color real del local */}
+                        {/* Cabecera Visual con Identidad del Establecimiento */}
+                        <div className="relative p-5 sm:p-6 border-b border-[#F6F3EC]/10 overflow-hidden">
+                          {/* Banner o Atmósfera de Color de Marca */}
                           {club.bannerUrl ? (
                             <>
                               <img
                                 src={club.bannerUrl}
                                 alt={club.displayName}
-                                className="absolute inset-0 w-full h-full object-cover opacity-35 group-hover:scale-105 transition-transform duration-700"
+                                className="absolute inset-0 w-full h-full object-cover opacity-25 group-hover:scale-105 transition-transform duration-700"
                               />
-                              <div className="absolute inset-0 bg-gradient-to-t from-[#141311] via-[#141311]/80 to-[#141311]/40" />
+                              <div className="absolute inset-0 bg-gradient-to-t from-[#121110] via-[#121110]/85 to-[#121110]/60" />
                             </>
                           ) : (
                             <div
-                              className="absolute inset-0 opacity-25 pointer-events-none transition-opacity group-hover:opacity-35"
+                              className="absolute inset-0 opacity-20 pointer-events-none transition-opacity group-hover:opacity-30"
                               style={{
-                                background: `radial-gradient(circle at 85% 20%, ${club.primaryColor}, transparent 60%), radial-gradient(circle at 15% 80%, ${club.secondaryColor}, transparent 65%)`,
+                                background: `radial-gradient(circle at 85% 15%, ${club.primaryColor}, transparent 60%), radial-gradient(circle at 15% 85%, ${club.secondaryColor}, transparent 65%)`,
                               }}
                             />
                           )}
 
-                          <div className="relative z-10 flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                            <div className="flex items-start gap-4">
+                          <div className="relative z-10 space-y-4">
+                            {/* Píldoras de Estado y Metadatos */}
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-mono-tech text-[10px] font-bold uppercase tracking-wider">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                Barra Habilitada
+                              </span>
+
+                              <div className="flex items-center gap-1.5">
+                                {club.hasMercadoPago && (
+                                  <span className="font-mono-tech text-[10px] text-[#38BDF8] bg-[#009EE3]/15 border border-[#009EE3]/30 px-2 py-0.5 rounded-full font-bold">
+                                    Mercado Pago
+                                  </span>
+                                )}
+                                <span className="font-mono-tech text-[10px] text-[#B6AFA3] bg-[#090908]/90 px-2 py-0.5 rounded-full border border-[#F6F3EC]/10">
+                                  /{club.slug}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Identidad del Club: Avatar + Nombre + Tagline */}
+                            <div className="flex items-start gap-3.5">
                               {club.logoUrl && club.logoUrl !== '/favicon.ico' ? (
                                 <img
                                   src={club.logoUrl}
                                   alt={club.displayName}
-                                  className="w-16 h-16 rounded-2xl object-cover border border-[#F6F3EC]/20 shrink-0 shadow-lg"
+                                  className="w-12 h-12 rounded-2xl object-cover border border-[#F6F3EC]/20 shrink-0 shadow-md group-hover:border-[#D4FF00]/40 transition-colors"
                                 />
                               ) : (
                                 <div
-                                  className="w-16 h-16 rounded-2xl flex items-center justify-center text-[#F6F3EC] font-display-syne font-extrabold text-2xl shrink-0 border border-white/20 shadow-lg"
+                                  className="w-12 h-12 rounded-2xl flex items-center justify-center text-[#F6F3EC] font-display-syne font-extrabold text-xl shrink-0 border border-white/20 shadow-md"
                                   style={{
                                     background: `linear-gradient(135deg, ${club.primaryColor}, ${club.secondaryColor})`,
                                   }}
@@ -898,82 +890,50 @@ export function HomeExperienceClient({
                                 </div>
                               )}
 
-                              <div className="space-y-1.5">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-mono-tech text-[10px] font-bold uppercase tracking-wider">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                                    Barra Habilitada
-                                  </span>
-
-                                  <span className="font-mono-tech text-[11px] text-[#B6AFA3] bg-[#090908]/80 px-2.5 py-0.5 rounded-full border border-[#F6F3EC]/10">
-                                    /{club.slug}
-                                  </span>
-
-                                  {club.hasMercadoPago && (
-                                    <span className="font-mono-tech text-[10px] text-[#38BDF8] bg-[#009EE3]/15 border border-[#009EE3]/30 px-2.5 py-0.5 rounded-full font-bold">
-                                      Mercado Pago
-                                    </span>
-                                  )}
-                                </div>
-
-                                <h3 className="font-display-syne text-2xl sm:text-3xl font-extrabold text-[#F6F3EC] tracking-tight">
+                              <div className="min-w-0 flex-1">
+                                <h3 className="font-display-syne text-xl sm:text-2xl font-extrabold text-[#F6F3EC] tracking-tight truncate group-hover:text-[#D4FF00] transition-colors">
                                   {club.displayName}
                                 </h3>
-
-                                <p className="text-xs sm:text-sm text-[#B6AFA3]">{club.tagline}</p>
+                                <p className="text-xs text-[#B6AFA3] truncate mt-0.5">
+                                  {club.tagline || 'Barra rápida • Pedidos desde el celular'}
+                                </p>
                               </div>
                             </div>
 
-                            <div className="flex sm:flex-col items-center sm:items-end justify-between gap-2 shrink-0">
-                              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-[#090908]/90 border border-[#F6F3EC]/10 text-xs font-mono-tech text-[#F6F3EC]">
+                            {/* Horario de Cierre y Cantidad de Productos */}
+                            <div className="flex items-center justify-between text-xs pt-2 border-t border-[#F6F3EC]/8 font-mono-tech">
+                              <div className="inline-flex items-center gap-1.5 text-[#B6AFA3]">
                                 <Clock className="w-3.5 h-3.5 text-[#FF7A33]" />
                                 <span>Cierre {club.defaultExpirationHour} hs</span>
                               </div>
-                              <span className="font-mono-tech text-xs text-[#D4FF00]">
+                              <span className="text-[#D4FF00] font-bold">
                                 {club.productCount}{' '}
-                                {club.productCount === 1 ? 'producto activo' : 'productos activos'}
+                                {club.productCount === 1 ? 'bebida activa' : 'bebidas activas'}
                               </span>
                             </div>
                           </div>
-
-                          {/* Categorías reales del establecimiento */}
-                          {club.categories.length > 0 && (
-                            <div className="relative z-10 flex flex-wrap items-center gap-1.5 mt-5 pt-4 border-t border-[#F6F3EC]/10">
-                              <span className="font-mono-tech text-[10px] uppercase tracking-wider text-[#706B62] mr-1">
-                                En carta:
-                              </span>
-                              {club.categories.map((cat) => (
-                                <span
-                                  key={cat}
-                                  className="px-2.5 py-0.5 rounded-md bg-[#090908]/75 border border-[#F6F3EC]/10 text-[11px] text-[#F6F3EC]/90"
-                                >
-                                  {cat}
-                                </span>
-                              ))}
-                            </div>
-                          )}
                         </div>
 
-                        {/* Vista previa de bebidas reales de la carta del local */}
-                        <div className="p-6 sm:p-8 space-y-5 flex-1 flex flex-col justify-between">
+                        {/* Cuerpo de la Tarjeta: Vista Previa de la Carta */}
+                        <div className="p-5 space-y-4 flex-1 flex flex-col justify-between">
                           {club.featuredProducts.length > 0 ? (
-                            <div className="space-y-2.5">
-                              <div className="flex items-center justify-between text-[11px] font-mono-tech text-[#B6AFA3] uppercase tracking-wider">
-                                <span>Adelanto de la carta en vivo</span>
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between text-[10px] font-mono-tech text-[#706B62] uppercase tracking-wider">
+                                <span>Adelanto de carta</span>
                                 <span>Precios oficiales</span>
                               </div>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                                {club.featuredProducts.slice(0, 4).map((prod) => (
+                              <div className="space-y-1.5">
+                                {club.featuredProducts.slice(0, 3).map((prod) => (
                                   <Link
                                     key={prod.id}
                                     href={`/${club.slug}`}
-                                    className="p-3 rounded-xl bg-[#0C0B0A] hover:bg-[#191715] border border-[#F6F3EC]/8 hover:border-[#D4FF00]/40 flex items-center justify-between gap-2 transition-colors"
+                                    className="p-2.5 rounded-xl bg-[#0C0B0A] hover:bg-[#181614] border border-[#F6F3EC]/8 hover:border-[#D4FF00]/40 flex items-center justify-between gap-2 transition-all fable-interactive"
                                   >
                                     <div className="min-w-0">
                                       <p className="text-xs font-bold text-[#F6F3EC] truncate">
                                         {prod.name}
                                       </p>
-                                      <span className="text-[10px] text-[#706B62] block">
+                                      <span className="text-[10px] text-[#706B62] block truncate">
                                         {prod.category}
                                         {prod.redeemDeadlineTime
                                           ? ` • Promo hasta ${prod.redeemDeadlineTime}`
@@ -988,50 +948,66 @@ export function HomeExperienceClient({
                               </div>
                             </div>
                           ) : (
-                            <div className="p-4 rounded-2xl bg-[#0C0B0A] border border-[#F6F3EC]/8 text-xs text-[#B6AFA3]">
-                              El local está preparando los productos de su carta para esta noche. Podés entrar a su perfil para ver las novedades o consultar tus QRs.
+                            <div className="rounded-2xl bg-[#0C0B0A] border border-[#F6F3EC]/8 p-4 text-center flex flex-col items-center justify-center gap-1.5 min-h-[110px]">
+                              <Wine className="w-5 h-5 text-[#706B62]" />
+                              <p className="text-xs font-semibold text-[#F6F3EC]">Carta en preparación</p>
+                              <span className="text-[11px] text-[#B6AFA3]">
+                                El local habilitará sus bebidas al abrir la barra hoy.
+                              </span>
                             </div>
                           )}
 
-                          {/* Acciones Directas hacia el Establecimiento */}
-                          <div className="pt-4 border-t border-[#F6F3EC]/10 flex flex-wrap items-center justify-between gap-3">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Link
-                                href={`/${club.slug}`}
-                                className="min-h-[46px] px-6 py-3 rounded-xl bg-[#D4FF00] hover:bg-[#e1ff33] text-[#050506] font-display-syne font-extrabold text-xs sm:text-sm inline-flex items-center gap-2 transition-all active:scale-95"
-                              >
-                                <QrCode className="w-4 h-4" />
-                                <span>Entrar a la carta de {club.displayName}</span>
-                                <ArrowRight className="w-4 h-4" />
-                              </Link>
-
-                              <Link
-                                href={`/${club.slug}/mis-tragos`}
-                                className="min-h-[46px] px-4 py-3 rounded-xl bg-[#1B1917] hover:bg-[#24211E] border border-[#F6F3EC]/12 text-[#F6F3EC] font-semibold text-xs inline-flex items-center gap-1.5 transition-colors"
-                              >
-                                <span>Mis QRs acá</span>
-                              </Link>
+                          {/* Categorías reales del establecimiento */}
+                          {club.categories.length > 0 && (
+                            <div className="flex flex-wrap items-center gap-1 pt-1">
+                              {club.categories.slice(0, 3).map((cat) => (
+                                <span
+                                  key={cat}
+                                  className="px-2 py-0.5 rounded-md bg-[#161513] border border-[#F6F3EC]/8 text-[10px] font-mono-tech text-[#B6AFA3]"
+                                >
+                                  {cat}
+                                </span>
+                              ))}
                             </div>
+                          )}
 
-                            {/* Accesos discretos para personal autorizado del local */}
+                          {/* Acciones de la Tarjeta */}
+                          <div className="pt-3 border-t border-[#F6F3EC]/10 flex items-center justify-between gap-2">
+                            <Link
+                              href={`/${club.slug}`}
+                              className="fable-interactive flex-1 min-h-[44px] px-4 py-2.5 rounded-xl bg-[#D4FF00] hover:bg-[#e1ff33] text-[#050506] font-display-syne font-extrabold text-xs inline-flex items-center justify-center gap-1.5 transition-all active:scale-95 shadow-[0_4px_14px_-3px_rgba(212,255,0,0.25)]"
+                            >
+                              <QrCode className="w-3.5 h-3.5" />
+                              <span>Ver carta</span>
+                              <ArrowUpRight className="w-3.5 h-3.5" />
+                            </Link>
+
+                            <Link
+                              href={`/${club.slug}/mis-tragos`}
+                              className="fable-interactive min-h-[44px] px-3 rounded-xl bg-[#181614] hover:bg-[#22201D] border border-[#F6F3EC]/12 text-[#B6AFA3] hover:text-[#F6F3EC] text-xs font-semibold inline-flex items-center gap-1 transition-colors"
+                              title="Consultar mis QRs en este local"
+                            >
+                              <span>Mis QRs</span>
+                            </Link>
+
                             {(club.canAccessBarra || club.canAccessAdmin) && (
-                              <div className="flex items-center gap-1.5">
+                              <div className="flex items-center gap-1">
                                 {club.canAccessBarra && (
                                   <Link
                                     href={`/${club.slug}/barra`}
-                                    className="p-2.5 rounded-xl bg-[#1B1917] hover:bg-[#262320] border border-[#F6F3EC]/15 text-[#FF7A33]"
+                                    className="p-2.5 rounded-xl bg-[#181614] hover:bg-[#22201D] border border-[#F6F3EC]/12 text-[#FF7A33]"
                                     title="Escáner Barra Bartender"
                                   >
-                                    <Wine className="w-4 h-4" />
+                                    <Wine className="w-3.5 h-3.5" />
                                   </Link>
                                 )}
                                 {club.canAccessAdmin && (
                                   <Link
                                     href={`/${club.slug}/admin`}
-                                    className="p-2.5 rounded-xl bg-[#1B1917] hover:bg-[#262320] border border-[#F6F3EC]/15 text-[#D4FF00]"
+                                    className="p-2.5 rounded-xl bg-[#181614] hover:bg-[#22201D] border border-[#F6F3EC]/12 text-[#D4FF00]"
                                     title="Administración del Local"
                                   >
-                                    <Settings className="w-4 h-4" />
+                                    <Settings className="w-3.5 h-3.5" />
                                   </Link>
                                 )}
                               </div>
@@ -1049,14 +1025,14 @@ export function HomeExperienceClient({
                     <div className="flex items-center gap-3">
                       <span className="w-2 h-2 rounded-full bg-[#FF5500] shrink-0" />
                       <span>
-                        Mostramos únicamente los establecimientos con barra digital activa en este momento. ¿Aún no estás en el boliche? Probá el recorrido interactivo abajo.
+                        Mostramos únicamente los establecimientos con barra digital activa en este momento. Podés probar la experiencia completa en el simulador a continuación.
                       </span>
                     </div>
                     <a
                       href="#demo-interactiva"
                       className="font-mono-tech text-[#D4FF00] font-bold hover:underline shrink-0"
                     >
-                      Probar simulador de compra →
+                      Probar simulador de compra ↓
                     </a>
                   </div>
                 )}
@@ -1065,11 +1041,11 @@ export function HomeExperienceClient({
           </div>
         </section>
 
+        {/* ================= E. SIMULADOR INTERACTIVO EN CELULAR (INMEDIATAMENTE DESPUÉS DEL BUSCADOR) ================= */}
+        <InteractiveMobileDemo clubs={clubs} />
+
         {/* ================= D. HISTORIA VISUAL DE 4 MOMENTOS ================= */}
         <VisualStoryTimeline primaryClub={primaryClub} onFocusSearch={focusClubFinder} />
-
-        {/* ================= E. SIMULADOR INTERACTIVO EN CELULAR ================= */}
-        <InteractiveMobileDemo clubs={clubs} />
 
         {/* ================= F. BENEFICIOS EXPLICADOS PARA EL CLIENTE ================= */}
         <section
@@ -1240,28 +1216,26 @@ export function HomeExperienceClient({
                 </p>
 
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3.5 pt-2">
-                  {primaryClub ? (
-                    <Link
-                      href={`/${primaryClub.slug}`}
-                      className="min-h-[54px] px-7 py-4 rounded-2xl bg-[#D4FF00] hover:bg-[#e1ff33] text-[#050506] font-display-syne font-extrabold text-sm sm:text-base inline-flex items-center justify-center gap-2.5 transition-all"
-                    >
-                      <span>Abrir carta de {primaryClub.displayName}</span>
-                      <ArrowUpRight className="w-5 h-5" />
-                    </Link>
-                  ) : null}
+                  <a
+                    href="#demo-interactiva"
+                    className="fable-interactive min-h-[54px] px-7 py-4 rounded-2xl bg-[#D4FF00] hover:bg-[#e1ff33] text-[#050506] font-display-syne font-extrabold text-sm sm:text-base inline-flex items-center justify-center gap-2.5 transition-all shadow-[0_12px_30px_-8px_rgba(212,255,0,0.3)] active:scale-95"
+                  >
+                    <Sparkles className="w-5 h-5 text-[#050506]" />
+                    <span>Probar Demo interactiva</span>
+                  </a>
 
                   <button
                     type="button"
                     onClick={focusClubFinder}
-                    className="min-h-[54px] px-6 py-4 rounded-2xl bg-[#191715] hover:bg-[#22201C] border border-[#F6F3EC]/15 text-[#F6F3EC] font-bold text-sm inline-flex items-center justify-center gap-2.5 transition-all cursor-pointer"
+                    className="fable-interactive min-h-[54px] px-6 py-4 rounded-2xl bg-[#191715] hover:bg-[#22201C] border border-[#F6F3EC]/15 hover:border-[#D4FF00]/40 text-[#F6F3EC] font-bold text-sm inline-flex items-center justify-center gap-2.5 transition-all active:scale-95 cursor-pointer"
                   >
                     <Search className="w-4 h-4 text-[#FF7A33]" />
-                    <span>Buscar un establecimiento</span>
+                    <span>Buscar un boliche ({clubs.length})</span>
                   </button>
 
                   <Link
                     href="/mi-cuenta"
-                    className="min-h-[54px] px-6 py-4 rounded-2xl bg-transparent hover:bg-[#F6F3EC]/5 border border-[#F6F3EC]/12 text-[#B6AFA3] hover:text-[#F6F3EC] font-semibold text-sm inline-flex items-center justify-center gap-2 transition-colors"
+                    className="fable-interactive min-h-[54px] px-6 py-4 rounded-2xl bg-transparent hover:bg-[#F6F3EC]/5 border border-[#F6F3EC]/12 text-[#B6AFA3] hover:text-[#F6F3EC] font-semibold text-sm inline-flex items-center justify-center gap-2 transition-colors"
                   >
                     <span>Mi Cuenta y compras</span>
                   </Link>
@@ -1298,22 +1272,12 @@ export function HomeExperienceClient({
             >
               Buscar boliche
             </button>
-            {primaryClub && (
-              <>
-                <Link
-                  href={`/${primaryClub.slug}`}
-                  className="hover:text-[#D4FF00] transition-colors"
-                >
-                  Carta de {primaryClub.displayName}
-                </Link>
-                <Link
-                  href={`/${primaryClub.slug}/mis-tragos`}
-                  className="hover:text-[#D4FF00] transition-colors"
-                >
-                  Mis QRs
-                </Link>
-              </>
-            )}
+            <a href="#demo-interactiva" className="hover:text-[#D4FF00] transition-colors">
+              Probar demo
+            </a>
+            <a href="#como-funciona" className="hover:text-[#D4FF00] transition-colors">
+              Cómo funciona
+            </a>
             <Link href="/mi-cuenta" className="hover:text-[#D4FF00] transition-colors">
               Mi Cuenta
             </Link>
@@ -1335,29 +1299,19 @@ export function HomeExperienceClient({
         <button
           type="button"
           onClick={focusClubFinder}
-          className="flex-1 min-h-[44px] px-3 rounded-xl bg-[#181614] border border-[#F6F3EC]/12 text-[#F6F3EC] font-bold text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-transform"
+          className="flex-1 min-h-[44px] px-3 rounded-xl bg-[#181614] border border-[#F6F3EC]/12 text-[#F6F3EC] font-bold text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-transform cursor-pointer"
         >
           <Search className="w-3.5 h-3.5 text-[#D4FF00]" />
-          <span>Buscar local</span>
+          <span>Buscar boliche</span>
         </button>
 
-        {primaryClub ? (
-          <Link
-            href={`/${primaryClub.slug}`}
-            className="flex-1 min-h-[44px] px-3 rounded-xl bg-[#D4FF00] text-[#050506] font-display-syne font-extrabold text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-transform"
-          >
-            <QrCode className="w-3.5 h-3.5" />
-            <span className="truncate">Carta {primaryClub.displayName}</span>
-          </Link>
-        ) : (
-          <a
-            href="#demo-interactiva"
-            className="flex-1 min-h-[44px] px-3 rounded-xl bg-[#D4FF00] text-[#050506] font-display-syne font-extrabold text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-transform"
-          >
-            <QrCode className="w-3.5 h-3.5" />
-            <span>Probar Carta</span>
-          </a>
-        )}
+        <a
+          href="#demo-interactiva"
+          className="flex-1 min-h-[44px] px-3 rounded-xl bg-[#D4FF00] text-[#050506] font-display-syne font-extrabold text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-transform shadow-[0_4px_12px_rgba(212,255,0,0.25)]"
+        >
+          <Sparkles className="w-3.5 h-3.5" />
+          <span>Probar Demo</span>
+        </a>
       </div>
 
       {/* Modal de Autenticación y Cuenta del Cliente */}

@@ -347,29 +347,18 @@ export function InteractiveMobileDemo({ clubs }: InteractiveMobileDemoProps) {
               </div>
             </div>
 
-            {/* Aviso explícito de simulación + link directo al local real */}
+            {/* Explicación del software para el usuario */}
             <div className="p-4 rounded-2xl bg-[#11100E] border border-[#F6F3EC]/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="text-xs text-[#B6AFA3] leading-relaxed">
-                <strong className="text-[#F6F3EC] block">¿Querés hacer un pedido real?</strong>
-                Este simulador es solo demostrativo. Para comprar de verdad, entrá a la tienda oficial del boliche.
+                <strong className="text-[#F6F3EC] block">Simulador oficial de BarraOnline</strong>
+                Probá interactuar con la carta, sumar tragos y simular el canje con el QR para ver cómo funciona el sistema desde cualquier celular.
               </div>
-              {activeRealClub ? (
-                <Link
-                  href={`/${activeRealClub.slug}`}
-                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#FF5500] hover:bg-[#ff661a] text-[#F6F3EC] font-bold text-xs shrink-0 transition-colors"
-                >
-                  <span>Ir a {activeRealClub.displayName}</span>
-                  <ArrowUpRight className="w-4 h-4" />
-                </Link>
-              ) : clubs[0] ? (
-                <Link
-                  href={`/${clubs[0].slug}`}
-                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#FF5500] hover:bg-[#ff661a] text-[#F6F3EC] font-bold text-xs shrink-0 transition-colors"
-                >
-                  <span>Ir a {clubs[0].displayName}</span>
-                  <ArrowUpRight className="w-4 h-4" />
-                </Link>
-              ) : null}
+              <a
+                href="#buscador-boliches"
+                className="fable-interactive inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#181614] hover:bg-[#22201D] border border-[#F6F3EC]/15 hover:border-[#D4FF00]/50 text-[#F6F3EC] font-bold text-xs shrink-0 transition-all"
+              >
+                <span>Ver boliches adheridos ↑</span>
+              </a>
             </div>
           </div>
 

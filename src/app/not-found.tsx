@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { AlertTriangle, Home, ShieldCheck, UserCheck } from 'lucide-react'
+import { AlertTriangle, Home } from 'lucide-react'
 
 export default function NotFoundPage() {
   return (
@@ -23,22 +23,6 @@ export default function NotFoundPage() {
         >
           <Home className="w-4 h-4" />
           <span>Ir al Inicio</span>
-        </Link>
-
-        <Link
-          href="/mi-cuenta"
-          className="px-5 py-3 rounded-2xl bg-gray-900 hover:bg-gray-800 border border-gray-800 text-gray-200 text-xs font-semibold flex items-center gap-2 transition-all"
-        >
-          <UserCheck className="w-4 h-4 text-purple-400" />
-          <span>Mi Cuenta</span>
-        </Link>
-
-        <Link
-          href="/superadmin"
-          className="px-5 py-3 rounded-2xl bg-gray-900 hover:bg-gray-800 border border-gray-800 text-cyan-300 text-xs font-semibold flex items-center gap-2 transition-all"
-        >
-          <ShieldCheck className="w-4 h-4 text-cyan-400" />
-          <span>Panel SuperAdmin</span>
         </Link>
       </div>
     </div>

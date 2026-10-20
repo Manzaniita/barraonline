@@ -179,7 +179,9 @@ export default async function HomePage() {
               <Building2 className="w-10 h-10 text-purple-400/60 mx-auto" />
               <h3 className="font-bold text-base text-white">No hay tiendas activas en este momento</h3>
               <p className="text-xs text-white/50 max-w-md mx-auto">
-                Podés dar de alta un nuevo boliche y configurar su carta desde el Panel SuperAdmin.
+                {canAccessSuperAdmin
+                  ? 'Podés dar de alta un nuevo boliche y configurar su carta desde el Panel SuperAdmin.'
+                  : 'Próximamente habrá nuevas tiendas y eventos disponibles.'}
               </p>
               <div className="flex items-center justify-center gap-3 pt-2">
                 {canAccessSuperAdmin ? (
